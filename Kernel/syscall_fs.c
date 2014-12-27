@@ -454,7 +454,7 @@ uint16_t nbytes;
  */
 int16_t _getdirent(void)
 {
-        if (nbytes < 16) {
+        if (nbytes < 32) {
                 udata.u_error = ENOSPC;
                 return -1;
         }
