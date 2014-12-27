@@ -70,6 +70,7 @@ SRCS  = basename.c \
 	uue.c \
 	wc.c \
 	which.c \
+	mandel.c \
 	whoami.c
 
 OBJS = $(SRCS:.c=.rel)
