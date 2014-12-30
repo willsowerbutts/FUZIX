@@ -32,6 +32,7 @@ SRCS  = banner.c \
 	decomp16.c \
 	df.c \
 	dirname.c \
+	dosread.c \
 	du.c \
 	echo.c \
 	ed.c \
@@ -58,6 +59,7 @@ SRCS  = banner.c \
 	mount.c \
 	mv.c \
 	od.c \
+	pagesize.c \
 	passwd.c \
 	patchcpm.c \
 	printenv.c \

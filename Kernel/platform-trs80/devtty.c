@@ -29,7 +29,7 @@ void kputchar(char c)
     tty_putc(1, c);
 }
 
-static bool tty_writeready(uint8_t minor)
+bool tty_writeready(uint8_t minor)
 {
     uint8_t reg;
     if (minor == 1)
@@ -107,7 +107,7 @@ int tty_carrier(uint8_t minor)
 }
 
 
-static uint8_t keymap[8];
+uint8_t keymap[8];
 static uint8_t keyin[8];
 static uint8_t keybyte, keybit;
 static uint8_t newkey;
