@@ -15,34 +15,44 @@ BINMAN = ../../Library/tools/binman
 .SUFFIXES: .c .rel
 
 
-SRCS  = basename.c \
+SRCS  = banner.c \
+	basename.c \
 	bd.c \
 	cal.c \
 	cat.c \
 	chgrp.c \
 	chmod.c \
 	chown.c \
+	cksum.c \
+	cmp.c \
 	cp.c \
 	cut.c \
 	date.c \
 	dd.c \
+	decomp16.c \
 	df.c \
 	dirname.c \
 	du.c \
 	echo.c \
 	ed.c \
+	env.c \
 	false.c \
 	fdisk.c \
+	fgrep.c \
 	fsck.c \
 	grep.c \
+	head.c \
 	id.c \
 	init.c \
 	kill.c \
 	ll.c \
 	ln.c \
+	logname.c \
 	ls.c \
+	man.c \
 	mkdir.c \
 	mkfs.c \
+	mkfifo.c \
 	mknod.c \
 	more.c \
 	mount.c \
@@ -56,23 +66,34 @@ SRCS  = basename.c \
 	pwd.c \
 	rm.c \
 	rmdir.c \
+	sed.c \
 	sleep.c \
 	ssh.c \
+	sort.c \
+	stty.c \
+	sum.c \
 	su.c \
 	sync.c \
+	tee.c \
 	termcap.c \
 	tget.c \
+	tail.c \
 	touch.c \
 	tr.c \
 	true.c \
 	umount.c \
+	uname.c \
 	uniq.c \
 	uud.c \
 	uue.c \
 	wc.c \
 	which.c \
+	who.c \
 	mandel.c \
-	whoami.c
+	whoami.c \
+	write.c \
+	xargs.c \
+	yes.c
 
 OBJS = $(SRCS:.c=.rel)
 
