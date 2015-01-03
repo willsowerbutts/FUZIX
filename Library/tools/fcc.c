@@ -8,7 +8,7 @@
  *	spraying support files everwhere
  */
 
-#define FCC_DIR		    "/opt/fcc"
+#define FCC_DIR		    "/usr/local/fcc"
 
 #define MODE_LINK		0
 #define MODE_OBJ		1
