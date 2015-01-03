@@ -183,10 +183,8 @@ int16_t _access(void)
 
 static int16_t chmod_op(inoptr ino)
 {
-	if (ino->c_node.i_uid != udata.u_euid && esuper()) {
-		i_deref(ino);
+	if (ino->c_node.i_uid != udata.u_euid && esuper())
 		return (-1);
-	}
 
 	ino->c_node.i_mode =
 	    (mode & MODE_MASK) | (ino->c_node.i_mode & F_MASK);
@@ -241,10 +239,8 @@ int16_t _fchmod(void)
 
 static int chown_op(inoptr ino)
 {
-	if (ino->c_node.i_uid != udata.u_euid && esuper()) {
-		i_deref(ino);
+	if (ino->c_node.i_uid != udata.u_euid && esuper())
 		return (-1);
-	}
 	ino->c_node.i_uid = owner;
 	ino->c_node.i_gid = group;
 	setftime(ino, C_TIME);
@@ -309,15 +305,21 @@ int16_t _utime(void)
 	inoptr ino;
 	time_t t[2];
 
-	if (!valaddr(buf, 2 * sizeof(time_t)))
-		return (-1);
 	if (!(ino = n_open(file, NULLINOPTR)))
 		return (-1);
-	if (ino->c_node.i_uid != udata.u_euid && esuper()) {
-		i_deref(ino);
-		return (-1);
-	}
-	uget(buf, t, 2 * sizeof(time_t));
+	/* Special case in the Unix API - NULL means now */
+	if (buf) {
+	        if (ino->c_node.i_uid != udata.u_euid && esuper())
+			goto out;
+		if (!valaddr(buf, 2 * sizeof(time_t)))
+			goto out2;
+		uget(buf, t, 2 * sizeof(time_t));
+	} else {
+	        if (!(getperm(ino) & OTH_WR))
+			goto out;
+	        rdtime(&t[0]);
+	        memcpy(&t[1], &t[0], sizeof(t[1]));
+        }
 	/* FIXME: needs updating once we pack top bits
 	   elsewhere in the inode */
 	ino->c_node.i_atime = t[0].low;
@@ -325,6 +327,11 @@ int16_t _utime(void)
 	setftime(ino, C_TIME);
 	i_deref(ino);
 	return (0);
+out:
+	udata.u_error = EPERM;
+out2:
+	i_deref(ino);
+	return -1;
 }
 
 #undef file
@@ -665,3 +672,94 @@ int16_t _uname(void)
 }
 
 #undef buf
+
+/**************************************
+flock(fd, lockop)	    Function 60
+int file;
+int lockop;
+
+Perform locking upon a file.
+**************************************/
+
+#define file (uint16_t)udata.u_argn
+#define lockop (uint16_t)udata.u_argn1
+
+int16_t _flock(void)
+{
+	inoptr ino;
+	struct oft *o;
+	staticfast uint8_t c;
+	staticfast uint8_t lock;
+	staticfast int self;
+
+	lock = lockop & ~LOCK_NB;
+	self = 0;
+
+	if (lock > LOCK_UN) {
+		udata.u_error = EINVAL;
+		return -1;
+	}
+
+	if ((ino = getinode(file)) == NULLINODE)
+		return -1;
+	o = &of_tab[udata.u_files[file]];
+
+	c = ino->c_flags & CFLOCK;
+
+	/* Upgrades and downgrades. Check if we are in fact doing a no-op */
+	if (o->o_access & O_FLOCK) {
+		self = 1;
+		/* Shared or exclusive to shared can't block and is easy */
+		if (lock == LOCK_SH) {
+			if (c == CFLEX)
+				c = 1;
+			goto done;
+		}
+		/* Exclusive to exclusive - no op */
+		if (c == CFLEX && lock == LOCK_EX)
+			return 0;
+		/* Shared to exclusive - handle via the loop */
+	}
+		
+		
+	/* Unlock - drop the locks, mark us not a lock holder. Doesn't block */
+	if (lockop == LOCK_UN) {
+		o->o_access &= ~O_FLOCK;
+		deflock(o);
+		return 0;
+	}
+
+	do {
+		/* Exclusive lock must have no holders */
+		if (c == self && lock == LOCK_EX) {
+			c = CFLEX;
+			goto done;
+		}
+		if (c < CFMAX) {
+			c++;
+			goto done;
+		}
+		if (c == CFMAX) {
+			udata.u_error = ENOLCK;
+			return -1;
+		}
+		/* LOCK_NB is defined as O_NDELAY... */
+		if (psleep_flags(&ino->c_flags, (lockop & LOCK_NB)))
+			return -1;
+		/* locks will hopefully have changed .. */
+		c = ino->c_flags & CFLOCK;
+	} while (1);
+
+done:
+	if (o->o_access & O_FLOCK)
+		deflock(o);
+	ino->c_flags &= ~CFLOCK;
+	ino->c_flags |= c;
+	o->o_access |= O_FLOCK;
+	wakeup(&ino->c_flags);
+	return 0;
+}
+
+
+#undef file
+#undef lockop
