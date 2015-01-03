@@ -7,7 +7,9 @@ PROGLOAD=`(cat ../../Kernel/platform/config.h; echo PROGLOAD) | cpp -E | tail -n
 
 #CC_OPT = -mz80 -c --opt-code-size --std-c89 --max-allocs-per-node 2000000 -I../../Library/include
 CC_OPT = -mz80 --std-c99 -c --opt-code-size --max-allocs-per-node 20000 -I../../Library/include
-#--oldralloc
+
+# Used for programs that make sdcc go boom or take hours
+CC_CRAP = -mz80 --std-c99 -c --opt-code-size --max-allocs-per-node 1000 -I../../Library/include
 ASM_OPT = -l -o -s
 LINKER_OPT = -mz80 --nostdlib --no-std-crt0 --code-loc $(PROGLOAD) --data-loc  0
 BINMAN = ../../Library/tools/binman
@@ -68,7 +70,6 @@ SRCS  = banner.c \
 	pwd.c \
 	rm.c \
 	rmdir.c \
-	sed.c \
 	sleep.c \
 	ssh.c \
 	sort.c \
@@ -77,8 +78,6 @@ SRCS  = banner.c \
 	su.c \
 	sync.c \
 	tee.c \
-	termcap.c \
-	tget.c \
 	tail.c \
 	touch.c \
 	tr.c \
@@ -91,29 +90,35 @@ SRCS  = banner.c \
 	wc.c \
 	which.c \
 	who.c \
-	mandel.c \
 	whoami.c \
 	write.c \
 	xargs.c \
 	yes.c
 
+SRCSBAD = sed.c
+
 OBJS = $(SRCS:.c=.rel)
+OBJSBAD = $(SRCSBAD:.c=.rel)
 
 LIBS = ../../Library/libs/syslib.lib
 
-FCC = ../../Library/tools/fcc
-
-APPS = $(OBJS:.rel=)
+APPS = $(OBJS:.rel=) $(OBJSBAD:.rel=)
 
 all: $(APPS)
 
 $(OBJS): $(SRCS)
 
+$(OBJSBAD): $(SRCSBAD)
+	$(CC) $(CC_CRAP) $(@:.rel=.c)
+
 .c.rel:
-	$(FCC) -c $<
+	$(CC) $(CC_OPT) $(@:.rel=.c)
 
 %: %.rel
-	$(FCC) $< -o $@
+	$(LINKER) $(LINKER_OPT) ../../Library/libs/crt0.rel $< $(LIBS) -o $@.ihx
+	makebin -s 65536 $@.ihx $@.tmp
+	$(BINMAN) $(PROGLOAD) $@.tmp $@.map $@
+	chmod +x $@
 
 clean:
 	rm -f $(OBJS) $(APPS) $(SRCS:.c=) core *~ *.asm *.lst *.sym *.map *.noi *.lk *.ihx *.tmp

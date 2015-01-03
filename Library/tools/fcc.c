@@ -324,20 +324,28 @@ static void build_command(void)
   if (mode == MODE_ASM)
     add_argument("-S");
   if (mode == MODE_OBJ) {
-    if (srchead == NULL || srchead->next != NULL) {
-      fprintf(stderr, "The -c option can only accept a single input right now.\n");
+    if (srchead == NULL) {
+      fprintf(stderr, "The -c option requires an input.\n");
       exit(1);
     }
     add_argument("-c");
   }
-  if (target == NULL)
-    autotarget();
-  add_option("-o", target);
   if (mode == MODE_LINK) {
-    add_argument("/home/btg/projects/fuzix/Library/libs/crt0.rel");
+    if (target == NULL)
+      autotarget();
+    if (target == NULL) {
+      fprintf(stderr, "no target.\n");
+      exit(1);
+    }
+    add_option("-o", target);
+    add_argument("/opt/fcc/lib/crt0.rel");
   }
-  if (srchead)
-    add_argument_list(srchead);
+  if (srchead) {
+    if (mode == MODE_OBJ)
+      add_argument(srchead->p);
+    else
+      add_argument_list(srchead);
+  }
   else {
     fprintf(stderr, "fcc: No sources specified.\n");
     exit(1);
@@ -430,12 +438,23 @@ int main(int argc, const char *argv[]) {
       }
     }
   }
-  add_include_path("/home/btg/projects/fuzix/Library/include/");
-  add_library_path("/home/btg/projects/fuzix/Library/libs/");
+  add_include_path("/opt/fcc/include/");
+  add_library_path("/opt/fcc/lib/");
   add_library("c");
 
-  build_command();
-  ret = do_command();
+  if (mode == MODE_OBJ) {
+    while (srchead) {
+      build_command();
+      ret = do_command();
+      if (ret)
+        break;
+      srchead = srchead->next;
+      argp = 0;
+    }
+  } else {
+      build_command();
+      ret = do_command();
+  }  
   if (mode != MODE_LINK || ret)
     exit(ret);
   argp = 0;
@@ -449,7 +468,7 @@ int main(int argc, const char *argv[]) {
   if (ret)
     exit(ret);
   argp = 0;
-  add_argument("/home/btg/projects/fuzix/Library/tools/binman");
+  add_argument("/opt/fcc/bin/binman");
   add_argument(t);
   add_argument(rebuildname("", target, "map"));
   add_argument(chopname(target));

@@ -18,6 +18,11 @@ typedef unsigned int uint;
 typedef uint16_t size_t;
 #endif
 
+#ifndef __SSIZE_T_DEFINED
+#define __SSIZE_T_DEFINED
+typedef int16_t ssize_t;
+#endif
+
 #if !defined (__STDC__)
 /* C types */
 typedef unsigned long uint32_t;
@@ -56,5 +61,5 @@ typedef int16_t pid_t;
 typedef uint16_t ino_t;
 
 typedef int64_t time_t;
-
+typedef int32_t clock_t;
 #endif
