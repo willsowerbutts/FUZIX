@@ -7,12 +7,12 @@ CSRCS += move.c rmxcall.c ucsd.c undo.c unixcall.c wildargs.c
 OBJS = $(CSRCS:.c=.rel)
 
 levee: $(OBJS)
-	fcc -o levee $(OBJS)
+	../../Library/tools/fcc -o levee $(OBJS)
 
 $(OBJS): $(CSRCS)
 
 .c.rel:
-	fcc -O2 -c $(@:.rel=.c)
+	../../Library/tools/fcc -O2 -c $(@:.rel=.c)
 
 clean:
 	rm -rf $(OBJS) *.lst *.sym *.map *.noi *.lk *.ihx *.tmp *~ *.rel *.asm levee levee.bin

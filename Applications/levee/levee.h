@@ -58,10 +58,10 @@
 #define SYS5	1
 
 /* what sort of terminal are you emulating? */
-#define VT52	1		/* this must be nonzero for the Atari ST */
+#define VT52	0		/* this must be nonzero for the Atari ST */
 #define TERMCAP	0
 #define ZTERM	0
-#define ANSI	0
+#define ANSI	1
 
 #if ST
 
