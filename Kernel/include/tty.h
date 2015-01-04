@@ -139,8 +139,7 @@ struct termios {
 #define KBMAPSIZE	0x20
 #define KBMAPGET	0x21
 #define VTSIZE		0x22
-
-#define CTRL(c)  (c & 0x1f)
+#define KBSETTRANS	0x23
 
 /* Character Input Queue size */
 #define TTYSIZ 132
@@ -159,6 +158,8 @@ struct tty {
     uint16_t pgrp;
     struct termios termios;
 };
+
+#define CTRL(x)		((x)&0x1F)
 
 extern struct tty ttydata[NUM_DEV_TTY + 1];
 
