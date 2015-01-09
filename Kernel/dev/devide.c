@@ -246,7 +246,7 @@ static void devide_init_drive(uint8_t drive)
     blk->drive_number = drive;
 
     /* read out the drive's sector count */
-    blk->drive_lba_count = *((uint32_t*)&buffer[120]);
+    blk->drive_lba_count = le32_to_cpu(*((uint32_t*)&buffer[120]));
 
     /* done with our temporary memory */
     brelse((bufptr)buffer);
