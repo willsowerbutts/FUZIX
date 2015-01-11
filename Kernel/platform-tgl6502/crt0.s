@@ -27,7 +27,7 @@
 
 		sei			; interrupts off
 		cld			; decimal off
-		ldx #$00
+		ldx #$FF
 		txs			; Stack (6502 not C)
 
 ;
@@ -65,12 +65,12 @@ start:					; Map ROM at 0x4000-0xFFFF
 		sta ptr1
 		lda #>__BSS_RUN__
 		sta ptr1+1
-		lda #0
-		tay
 
 		lda #'z'
 		sta $FF03
 
+		lda #0
+		tay
 		ldx #>__BSS_SIZE__
 		beq bss_wipe_tail
 bss_wiper_1:	sta (ptr1),y

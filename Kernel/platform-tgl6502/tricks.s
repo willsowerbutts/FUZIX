@@ -9,8 +9,18 @@
 	.import _chksigs
 	.import _trap_monitor
 
+	.import map_kernel
+
+	.import	_newproc
+	.import _getproc
+	.import _runticks
+	.import _inint
+	.import outstring
+	.import outcharhex
+
         .include "kernel.def"
         .include "../kernel02.def"
+	.include "zeropage.inc"
 
         .segment "COMMONMEM"
 
@@ -33,69 +43,89 @@ _switchout:
 
         jsr _chksigs
 ;
-;        ; save machine state
-;        ldd #0 ; return code set here is ignored, but _switchin can 
-;        ; return from either _switchout OR _dofork, so they must both write 
-;        ; U_DATA__U_SP with the following on the stack:
-;	pshs d
-;	sts U_DATA__U_SP
+;	Put the C stack on the CPU stack, and store that in U_SP
 ;
-;        ; set inint to false
-;	lda #0
-;	sta _inint
-;
-;        ; find another process to run (may select this one again) returns it
-;        ; in X
-;        jsr _getproc
+	lda #0		; return code
+	pha
+	pha
+	lda sp		; C stack
+	pha
+	lda sp+1
+	pha
+	tsx
+	stx U_DATA__U_SP	; Save it
+
+        ; set inint to false
+	lda #0
+	sta _inint
+
+        ; find another process to run (may select this one again) returns it
+        ; in x,a
+        jsr _getproc
         jsr _switchin
         ; we should never get here
         jsr _trap_monitor
 
 badswitchmsg: .asciiz "_switchin: FAIL\r\n"
 
-; new process pointer is in X
+;
+;	On entry x,a holds the process to switch in
+;
 _switchin:
-;        orcc #0x10		; irq off
-;
-;	ldy P_TAB__P_PAGE_OFFSET+3,x
-;	; FIXME: can we skip the usermaps here ?
-;	stx 0xffa6		; map the process uarea we want
-;	adda #1
-;	stx 0xffa7
-;	stx 0xffaf		; and include the kernel mapping
-;
-	; ------- No stack -------
-        ; check u_data->u_ptab matches what we wanted
-;	cmpx U_DATA__U_PTAB
-;        bne switchinfail
-;
-	; wants optimising up a bit
-;	lda #P_RUNNING
-;	sta P_TAB__P_STATUS_OFFSET,x
+	sei
+	sta	ptr1
+	stx	ptr1+1
+	ldy	#P_TAB__P_PAGE_OFFSET
+	lda	(ptr1),y
+	sta	$FF8A		; switches zero page, stack memory area
 
-;	lda #0
-;	sta _runticks
+	; ------- No stack -------
+
+        ; check u_data->u_ptab matches what we wanted
+	lda	U_DATA__U_PTAB
+	cmp	ptr1
+	bne	switchinfail
+	lda	U_DATA__U_PTAB+1
+	cmp	ptr1+1
+	bne	switchinfail
+
+	lda	#P_RUNNING
+	ldy	#P_TAB__P_STATUS_OFFSET
+	sta	(ptr1),y
+
+	lda #0
+	sta _runticks
+	sta _runticks+1
 
         ; restore machine state -- note we may be returning from either
         ; _switchout or _dofork
-;        lds U_DATA__U_SP
-
-;        puls x ; return code
-
-        ; enable interrupts, if the ISR isn't already running
-;	lda _inint
-;        beq swtchdone ; in ISR, leave interrupts off
-;	andcc #0xef
-;swtchdone:
-;        rts
+        ldx U_DATA__U_SP
+	txs
+	pla
+	sta sp+1
+	pla
+	sta sp
+	lda _inint
+        beq swtchdone		; in ISR, leave interrupts off
+	cli
+swtchdone:
+	pla		; Return code
+	tax
+	pla
+        rts
 
 switchinfail:
-;	jsr outx
-;        ldx #badswitchmsg
-;        jsr outstring
-;	; something went wrong and we didn't switch in what we asked for
-;        jmp _trap_monitor
+	lda	ptr1
+	jsr	outcharhex
+	lda	ptr1+1
+	jsr	outcharhex
+        lda	#<badswitchmsg
+	ldx	#>badswitchmsg
+        jsr outstring
+	; something went wrong and we didn't switch in what we asked for
+        jmp _trap_monitor
 
+; FIXME: put this in ZP ?
 fork_proc_ptr: .word 0 ; (C type is struct p_tab *) -- address of child process p_tab entry
 
 ;
@@ -104,91 +134,135 @@ fork_proc_ptr: .word 0 ; (C type is struct p_tab *) -- address of child process 
 ;
 _dofork:
 ;        ; always disconnect the vehicle battery before performing maintenance
-;        orcc #0x10	 ; should already be the case ... belt and braces.
+        sei	 ; should already be the case ... belt and braces.
 
 	; new process in X, get parent pid into y
 
-;	stx fork_proc_ptr
-;	ldy P_TAB__P_PID_OFFSET,x
+	sta fork_proc_ptr
+	stx fork_proc_ptr+1
+
+	ldy #P_TAB__P_PID_OFFSET
+	sta ptr1
+	stx ptr1+1
 
         ; Save the stack pointer and critical registers.
+	; 6502 at least doesn't have too many of those 8)
+
         ; When this process (the parent) is switched back in, it will be as if
         ; it returns with the value of the child's pid.
-;        pshs y ; y  has p->p_pid from above, the return value in the parent
+	lda (ptr1),y
+	pha
+	iny
+	lda (ptr1),y
+	pha
 
         ; save kernel stack pointer -- when it comes back in the parent we'll be in
         ; _switchin which will immediately return (appearing to be _dofork()
-	; returning) and with HL (ie return code) containing the child PID.
-        ; Hurray.
- ;       sts U_DATA__U_SP
+	; returning) the child PID.
+	lda sp
+	pha
+	lda sp+1
+	pha
+	tsx
+	stx U_DATA__U_SP
 
         ; now we're in a safe state for _switchin to return in the parent
 	; process.
 
-	; --------- we switch stack copies in this call -----------
-;	jsr fork_copy			; copy 0x000 to udata.u_top and the
-					; uarea and return on the childs
-					; common
+	;
+	;	Assumes ptr1 still holds the new process ptr
+	;
+
+	jsr fork_copy
+
+	; --------- we switch stack copies here -----------
+	lda U_DATA__U_PAGE
+	sta $FF8A			; switch to child and child stack
+					; and zero page etc
+
 	; We are now in the kernel child context
 
         ; now the copy operation is complete we can get rid of the stuff
-        ; _switchin will be expecting from our copy of the stack.
-;	puls y
+	; _switchin will be expecting from our copy of the stack.
+	pla
+	pla
+	pla
+	pla
 
-;        ldx fork_proc_ptr
-;        jsr _newproc
+        lda fork_proc_ptr
+	ldx fork_proc_ptr+1
+;
+;	FIXME: turn these into a C argument!
+;
+        jsr _newproc
 
 	; any calls to map process will now map the childs memory
 
         ; runticks = 0;
-;        clr _runticks
+	lda #0
+	sta _runticks
+	sta _runticks+1
+
         ; in the child process, fork() returns zero.
-	;
+	tax
+
 	; And we exit, with the kernel mapped, the child now being deemed
 	; to be the live uarea. The parent is frozen in time and space as
 	; if it had done a switchout().
-;        rts
+        rts
 
-fork_copy:
-;	ldd U_DATA__U_TOP
-;	addd #0x0fff		; + 0x1000 (-1 for the rounding to follow)
-;	lsra		
-;	lsra
-;	lsra
-;	lsra
-;	lsra			; bits 2/1 for 8K pages
-;	anda #6			; lose bit 0
-;	adda #2			; and round up to the next bank (but in 8K terms)
 ;
-;	ldx fork_proc_ptr
-;	ldy P_TAB__P_PAGE_OFFSET,x
-;	; y now points to the child page pointers
-;	ldx U_DATA__U_PAGE
-;	; and x to the parent
-;fork_next:
-;	ld a,(hl)
-;	out (0x11), a		; 0x4000 map the child
-;	ld c, a
-;	inc hl
-;	ld a, (de)
-;	out (0x12), a		; 0x8000 maps the parent
-;	inc de
-;	exx
-;	ld hl, #0x8000		; copy the bank
-;	ld de, #0x4000
-;	ld bc, #0x4000		; we copy the whole bank, we could optimise
-;				; further
-;	ldir
-;	exx
-;	call map_kernel		; put the maps back so we can look in p_tab
-; FIXME: can't map_kernel here - we've been playing with the maps, fix
-; directly
-;	suba #1
-;	bne fork_next
-
-;	ld a, c
-;	out (0x13), a		; our last bank repeats up to common
-	; --- we are now on the stack copy, parent stack is locked away ---
-;	rts			; this stack is copied so safe to return on
-
+;	On entry ptr1 points to the process table of the child, and
+;	the U_DATA is still not fully modified so holds the parents bank
+;	number.
+;
+fork_copy:
+	ldx U_DATA__U_PAGE
+	ldy #P_TAB__P_PAGE_OFFSET
+	lda (ptr1),y		; child->p_page
+	tay
+	lda #0			; each bank is 56K
+copy_loop:
+	stx $FF8C		; 0x4000
+	sty $FF8D		; 0x6000
+	pha			; Oh for a 65C02 8)
+	tya
+	pha
+	txa
+	pha
+	jsr bank2bank		; copies 8K
+	pla
+	tax
+	pla
+	tay
+	pla
+	inx
+	iny
+	clc
+	adc #1
+	cmp #8
+	bne copy_loop
+	jmp map_kernel		; put the kernel mapping back as it should be
 	
+bank2bank:			;	copy 4K between the blocks mapped
+				;	at 0x4000 and 0x6000
+	lda #$40
+	sta ptr3+1
+	lda #$60
+	sta ptr4+1
+	lda #0
+	sta ptr3
+	sta ptr4
+	tay
+	ldx #$20		;	32 x 256 bytes = 8K
+copy1:
+	lda (ptr3),y
+	sta (ptr4),y
+	iny
+	bne copy1
+	inc ptr3+1
+	inc ptr4+1
+	dex
+	bne copy1
+	rts
+
