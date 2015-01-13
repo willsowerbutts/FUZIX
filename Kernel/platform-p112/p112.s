@@ -102,23 +102,23 @@ ocloop:     in0 a, (ESCC_CTRL_A)
 platform_interrupt_all:
         ret
 
-_trap_monitor:
-        di
-        call outnewline
-        pop hl
-        call outhl
-        call outnewline
-        pop hl
-        call outhl
-        call outnewline
-        pop hl
-        call outhl
-        call outnewline
-        pop hl
-        call outhl
-        call outnewline
-        pop hl
-        call outhl
-        call outnewline
-        halt
-        jr _trap_monitor
+;_trap_monitor:
+;        di
+;        call outnewline
+;        pop hl
+;        call outhl
+;        call outnewline
+;        pop hl
+;        call outhl
+;        call outnewline
+;        pop hl
+;        call outhl
+;        call outnewline
+;        pop hl
+;        call outhl
+;        call outnewline
+;        pop hl
+;        call outhl
+;        call outnewline
+;        halt
+;        jr _trap_monitor
