@@ -3,6 +3,11 @@
 ;
 ; Based on the the socz80 ROM monitor program, and the UZI-180 monitor
 ; program, itself based on YM.MAC and M580 monitor.
+;
+; Commands:
+;   D arg1 [arg2]  - display memory at address arg1 (to arg2)
+;   I arg1         - input from port address arg1
+;   O arg1 arg2    - output arg2 to port address arg1
 
                 .module monitor-z80
                 .z80
