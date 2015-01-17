@@ -35,7 +35,9 @@
 	    .import _unix_syscall
 	    .import _platform_interrupt
 	    .import _kernel_flag
-	    .import copycommon
+
+	    .import outcharhex
+	    .import outxa
 
             .include "kernel.def"
             .include "../kernel02.def"
@@ -52,8 +54,17 @@ syscall	     =  $FE
 
 nmi_trap:
 _trap_monitor:
+;
+;	Put the ROM back as it was at entry including the second 8K bank we
+;	only use for vectors, then jump to $E000 which should enter whatever
+;	monitor was put there.
+;
 	    sei
-	    jmp _trap_monitor
+	    ldx #$40
+	    stx $FF90		; $C000
+	    inx
+	    stx $FF91		; $E000
+	    jmp $E000
 
 _trap_reboot:
 	    jmp _trap_reboot	; FIXME: original ROM map and jmp
@@ -108,19 +119,21 @@ _program_vectors:
 	    ; will exit with interrupts off
 	    sei
 	    ;
-	    jsr copycommon
 	    ; our C caller will invoke us with the pointer in x,a
 	    ; just pass it on
 	    jsr map_process
 program_vectors_k:
-	    lda #<vector
-	    sta $FFFE
-	    lda #>vector
-	    sta $FFFF
-	    lda #<nmi_handler
-	    sta $FFFA
-	    lda #>nmi_handler
-	    sta $FFFB
+;
+;	These are in common ROM space in our case
+;
+;	    lda #<vector
+;	    sta $FFFE
+;	    lda #>vector
+;	    sta $FFFF
+;	    lda #<nmi_handler
+;	    sta $FFFA
+;	    lda #>nmi_handler
+;	    sta $FFFB
 	    ; However tempting it may be to use BRK for system calls we
 	    ; can't do this on an NMOS 6502 because the chip has brain
 	    ; dead IRQ handling bits that could simply "lose" the syscall!
@@ -155,6 +168,9 @@ program_vectors_k:
 ;
 ;	save/restore are used so that the kernel can play with its internal
 ;	banking/mappings without having to leave interrupts off all the time
+;
+;	ptr1 and tmp1 may be destroyed by these methods, but no other
+;	temporaries.
 ;
 map_process_always:
 	    pha
@@ -276,12 +292,6 @@ saved_map:  .byte 0
 ; corrupting other registers
 
 outchar:
-	    pha
-outcharw:
-	    lda $FF01
-	    and #4
-	    beq outcharw
-	    pla
 	    sta $FF03
 	    rts
 
@@ -311,12 +321,11 @@ vector:
 	    pha
 	    tsx					; and save the 6502 stack ptr
 	    stx istack_switched_sp		; in uarea/stacks
-
 ;
-;	Hope the user hasn't gone over 192 bytes of 6502 stack !
+;	Hope the user hasn't used all the CPU stack
 ;
-	    ldx #$40				; guess at reserving some istack
-	    txs					; our istack
+;	FIXME: we should check here if S is too low and if so set it high
+;	and deliver SIGKILL
 ;
 ;	Configure the C stack to the i stack
 ;
@@ -342,33 +351,51 @@ irqout:
 	    pla
 	    rti
 
-
-;	    X, A holds the syscall block
-;	    Y holds the call code
-;	    We assume the kernel is in bank 0
+;
+;	    sp/sp+1 are the C stack of the userspace
+;	    with the syscall number in X
+;	    Y indicates the number of bytes of argument
 ;
 syscall_entry:
+	    php
 	    sei
-	    sty U_DATA__U_CALLNO
-	    pha
-	    txa
-	    pha
-	    sta ptr1
-	    stx ptr1+1
-	    lda #<U_DATA__U_ARGN
-	    sta ptr2
-	    lda #>U_DATA__U_ARGN
-	    sta ptr2+1
+	    cld
+
+	    stx U_DATA__U_CALLNO
+
+	    ; Remove the arguments. This is fine as by the time we go back
+	    ; to the user stack we'll have finished with them
+	    lda sp
+	    ldx sp+1
+	    jsr cincaxy
+	    sta sp
+	    stx sp+1
 
 	    ldy #0
+	    ;
+	    ;	We copy the arguments but need to deal with the compiler
+	    ;   stacking in the reverse order. At this point ptr1 points
+	    ;	to the last byte of the arguments (first argument). We go
+	    ;	down the stack copying words up the argument list.
+	    ;
 
-copy_args:  lda (ptr1),y	; copy the arguments from current bank
-	    sta (ptr2),y	; will write into bank 1
+copy_args:
+	    lda (ptr1),y		; copy the arguments over
+	    sta U_DATA__U_ARGN,x
 	    iny
+            inx
+	    lda (ptr1),y
+	    sta U_DATA__U_ARGN,x
+            iny
+            dex
+            dex
+	    dex
 	    cpy #8
 	    bne copy_args
+
 	    ;
-	    ; Now we need to bank and stack switch
+	    ; Now we need to stack switch. Save the adjusted stack we want
+	    ; for return
 	    ;
 	    lda sp
 	    pha
@@ -377,13 +404,14 @@ copy_args:  lda (ptr1),y	; copy the arguments from current bank
 	    tsx
 	    stx U_DATA__U_SP
 ;
-;	We try and divide our previous stack resource up between user
-;	and kernel. It's not clear if we should do this, copy the stack
-;	or do something clever I've not thought of yet. Possibly we should
-;	see if there is enough stack and if not copy and screw about ?
+;	We save a copy of the high byte of sp here as we may need it to get
+;	the brk() syscall right.
 ;
-	    ldx #$80
-	    txs			; Switch to the working stack
+	    sta U_DATA__U_SP + 1
+;
+;
+;	FIXME: we should check here if there is enough 6502 stack left
+;	and if so either copy and switch stacks or kill the process
 ;
 ;	Set up the C stack
 ;
@@ -416,38 +444,48 @@ copy_args:  lda (ptr1),y	; copy the arguments from current bank
 	    sta sp+1
 	    pla
 	    sta sp
-	    pla
-	    sta ptr1+1
-	    pla
-	    sta ptr1+1
-;
-;	Copy the return data over
-;
-	    ldy #8		; write them after the argument block
-	    lda U_DATA__U_ERROR
-
-	    sta (ptr1), y
-	    iny
-	    lda U_DATA__U_ERROR+1
-	    sta (ptr1),y
-	    iny
-	    lda U_DATA__U_RETVAL
-	    sta (ptr1),y
-	    iny
-	    lda U_DATA__U_RETVAL+1
-	    sta (ptr1), y
 ;
 ;	FIXME: do signal dispatch - this will need C stack fixing, and
 ;	basically signal dispatch is __interrupt.
 ;
+;	We may be in decimal mode beyond this line.. take care
+;
+	    plp
+
+;	Copy the return data over
+;
+	    ldy U_DATA__U_RETVAL
+	    ldx U_DATA__U_RETVAL+1
+;	Also sets Z for us
+	    lda U_DATA__U_ERROR
 
 	    rts
 
-
 platform_doexec:
+;
+;	Start address of executable
+;
 	    stx ptr1+1
 	    sta ptr1
-	    jmp (ptr1)		; 0x2000 usually
+
+	    ldy #'E'
+	    sty $FF03
+	    jsr outxa
+;
+;	Set up the C stack
+;
+	    lda U_DATA__U_ISP
+	    sta sp
+	    ldx U_DATA__U_ISP+1
+            stx sp+1
+
+	    jsr outxa
+;
+;	Set up the 6502 stack
+;
+	    ldx #$ff
+	    txs
+	    jmp (ptr1)		; Enter user application
 
 ;
 ;	Straight jumps no funny banking issues
@@ -457,3 +495,49 @@ _unix_syscall_i:
 _platform_interrupt_i:
 	    jmp _platform_interrupt
 
+
+;
+;	Hack for common runtime helper (fixme move helpers to common)
+;
+cincaxy:sty tmp1
+	clc
+	adc tmp1
+	bcc incaxy2
+	inx
+incaxy2:rts
+
+;
+;	ROM disc copier (needs to be in common), call with ints off
+;
+;	AX = ptr, length always 512, src and page in globals
+;
+
+	.import _romd_bank, _romd_roff, _romd_rmap;
+	.export _rd_copyin
+
+_rd_copyin:
+	sta ptr1
+	stx ptr1+1		; Save the target
+	ldy _romd_bank		; 0 = A0, 1 = C0, pick based on target
+	lda $FF8F,y		;
+	pha
+	lda _romd_rmap
+	sta $FF8F,y
+	lda _romd_roff
+	sta ptr2
+	lda _romd_roff+1
+	sta ptr2+1
+	ldy #0
+	ldx #2
+rd_cl:	lda (ptr2),y
+	sta (ptr1),y
+	iny
+	bne rd_cl
+	inc ptr1+1
+	inc ptr2+1
+	dex
+	bne rd_cl
+	pla
+	ldy _romd_bank
+	sta $FF8F,y
+	rts

@@ -13,6 +13,7 @@
 		.import  __BSS_RUN__, __BSS_SIZE__
 		.import	 __DATA_LOAD__, __DATA_RUN__, __DATA_SIZE__
 		.import	 __COMMONMEM_LOAD__, __COMMONMEM_RUN__, __COMMONMEM_SIZE__
+		.import	 __STUBS_LOAD__, __STUBS_RUN__, __STUBS_SIZE__
 		.importzp	ptr1, ptr2, tmp1
 
 	        ; startup code @0
@@ -57,7 +58,7 @@ start:					; Map ROM at 0x4000-0xFFFF
 		stx $FF91
 		lda #$02
 		sta $FF8A		; Common for init at 0x0000
-		lda #$01		; Kernel data at 0x4000
+		lda #$01		; Kernel data at 0x2000
 		sta $FF8B
 
 		lda #<kstack_top	; C stack
@@ -116,6 +117,22 @@ gogogo:
 
 		jsr	copyloop
 
+	        lda     #<__STUBS_LOAD__         ; Source pointer
+	        sta     ptr1
+	        lda     #>__STUBS_LOAD__
+	        sta     ptr1+1
+
+	        lda     #<__STUBS_RUN__          ; Target pointer
+	        sta     ptr2
+	        lda     #>__STUBS_RUN__
+	        sta     ptr2+1
+
+	        ldx     #<~__STUBS_SIZE__
+	        lda     #>~__STUBS_SIZE__        ; Use -(__STUBS_SIZE__+1)
+	        sta     tmp1
+
+		jsr	copyloop
+
 
 
 		jsr	copycommon
@@ -162,7 +179,8 @@ copyloop:
 
 
 ;
-;	This is also used at runtime so split it off as a helper
+;	This may also used be useful at runtime so split it off as a helper
+;	We can revisit and unsplit it if not.
 ;
 copycommon:
 		pha

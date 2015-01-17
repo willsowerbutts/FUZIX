@@ -1,4 +1,4 @@
-#define NR_SYSCALL 61
+#define NR_SYSCALL 63
 
 char *syscall_name[NR_SYSCALL] = {
 	"_exit",
@@ -63,6 +63,7 @@ char *syscall_name[NR_SYSCALL] = {
 	"_sigdisp",
 	"flock",
 	"getpgrp",
+	"yield",
 };
 
 int syscall_args[NR_SYSCALL] = {
@@ -128,4 +129,5 @@ int syscall_args[NR_SYSCALL] = {
 	2, //_sigdisp
 	2, //flock
 	0, //getpgrp
+	0, //yield
 };
