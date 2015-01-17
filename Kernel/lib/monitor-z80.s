@@ -264,7 +264,7 @@ cr:             ld a, #0
 
 
 ; strings
-entrystr1:      .ascii "monitor, SP="
+entrystr1:      .ascii "monitor: SP="
                 .db 0
 entrystr2:      .ascii ", PC="
                 .db 0
