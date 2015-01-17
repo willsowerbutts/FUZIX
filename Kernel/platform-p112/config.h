@@ -1,7 +1,7 @@
 /* Enable to make ^Z dump the inode table for debug */
 #undef CONFIG_IDUMP
 /* Enable to make ^A drop back into the monitor */
-#undef CONFIG_MONITOR
+#define CONFIG_MONITOR
 /* Profil syscall support (not yet complete) */
 #undef CONFIG_PROFIL
 /* Multiple processes in memory at once */
@@ -60,3 +60,6 @@
 /* We have a DS1302, we can read the time of day from it */
 #define CONFIG_RTC
 #define CONFIG_RTC_INTERVAL 30 /* deciseconds between reading RTC seconds counter */
+
+/* We have the P112 floppy controller */
+#define CONFIG_P112_FLOPPY
