@@ -7,6 +7,7 @@
         ; exported symbols
         .globl init_early
         .globl init_hardware
+        .globl inchar
         .globl outchar
         .globl outstring
         .globl outcharhex
@@ -97,6 +98,14 @@ ocloop:     in0 a, (ESCC_CTRL_A)
         jr z, ocloop
         out0 (ESCC_DATA_A), b
         pop bc
+        ret
+
+; inchar: Wait for character on UART, return in A
+inchar:
+        in0 a, (ESCC_CTRL_A)    ; bit 0 is "rx ready" (1=ready)
+        rrca
+        jr nc, inchar
+        in0 a, (ESCC_DATA_A)
         ret
 
 platform_interrupt_all:
