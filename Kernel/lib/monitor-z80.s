@@ -12,6 +12,7 @@
                 .module monitor-z80
                 .z80
 
+                ; exported symbols
                 .globl _trap_monitor
 
                 ; imported symbols

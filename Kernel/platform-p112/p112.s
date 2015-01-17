@@ -110,24 +110,3 @@ inchar:
 
 platform_interrupt_all:
         ret
-
-;_trap_monitor:
-;        di
-;        call outnewline
-;        pop hl
-;        call outhl
-;        call outnewline
-;        pop hl
-;        call outhl
-;        call outnewline
-;        pop hl
-;        call outhl
-;        call outnewline
-;        pop hl
-;        call outhl
-;        call outnewline
-;        pop hl
-;        call outhl
-;        call outnewline
-;        halt
-;        jr _trap_monitor
