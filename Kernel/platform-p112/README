@@ -3,6 +3,9 @@ By Will Sowerbutts <will@sowerbutts.com>
 
 Assumes a P112 fitted with 1024KB RAM and G-IDE
 
+Can boot from a floppy -- write "fuzix-boot.fdd" to floppy and boot it in the
+first drive on the P112: dd if=platform-p112/fuzix-boot.fdd bs=512 of=/dev/fd0
+
 Only supported storage device at this time is the G-IDE
 
 To build, edit ../Makefile to read:

@@ -3,10 +3,7 @@
 ; Boots only from drive 0, floppy is used solely for kernel, one
 ; cannot have a filesystem on there as well.
 ;
-; Assembles to a single sector -- last byte needs to be a checksum
-; value (see flopboot-cksum script). Write this to the first sector
-; of the floppy, then write the fuzix.bin file in the following
-; sectors
+; Assembles to a single sector 
 ;
 ; based on:
 ; Boot loader for P112 UZI180 floppy disks.
@@ -15,49 +12,43 @@
 
         .module flopboot
         .z180
-        .area _LOADER (ABS)
 
         .include "kernel.def"
         .include "../cpu-z180/z180.def"
 
-; P112 ROM loads us at 8000, we copy to F800 and run there
-; P112 ROM uses FE00 upwards
-; Kernel must be loaded at 0x88 upwards
-; We use F800 to approx FC00
-dparm   .equ    0x0B
-himem   .equ    0xF800
-stack   .equ    0xFE00
-uzi     .equ    0x88
-cmdline .equ    0x80
-kernsz  .equ    ((himem-uzi)/512) ; 61.5KB -- max kernel size we can load
+dparm       .equ    0x0B
+loadaddr    .equ    0x8000  ; P112 bootstrap loads us here
+himem       .equ    0xF800  ; We use F800 to approx FC00
+stack       .equ    0xFE00  ; P112 ROM uses FE00 upwards
+fuzix_entry .equ    0x88    ; Kernel must be loaded at 0x88 upwards
+cmdline     .equ    0x80    ; CP/M command line area
 
+        .area _LOADER (ABS)
         .org himem
+start:
 
-        ; put SP below us
-        ld      sp, #stack
-
-        ; copy code into place
-        ld      hl, #0x8000     ; we're loaded here
-        ld      de, #himem      ; but we want to be here
-        ld      bc, #512        ; we're only one sector
-        ldir                    ; copy into high memory
-        jp      loader          ; jump into new copy
+        ; P112 ROM loads us at 8000, we copy ourselves to the correct location
+        ld      hl, #loadaddr
+        ld      de, #himem
+        ld      bc, #512
+        ldir                        ; copy into high memory
+        jp      loader              ; jump into new copy
 
 loader:
-        ld      a,#0xF8         ; keep loader and BIOS data area mapped, with ROM in low 32K
+        ld      sp, #stack          ; put SP somewhere safe
+        ld      a,#0xF8             ; keep loader and BIOS data area mapped, with ROM in low 32K
         out0    (MMU_CBAR),a
         in0     a, (MMU_CBR)
         out0    (MMU_BBR), a
-        ; in0     a,(Z182_RAMLBR) ; we'll try to use all the available RAM,
-        ; out0    (MMU_BBR),a     ; even the shadowed ROM area
-        in0     a,(Z182_SYSCONFIG)
-        set     3,a             ; enable the BIOS ROM in case it was shadowed
-        out0    (Z182_SYSCONFIG),a
+        in0     a,(Z182_SYSCONFIG)  
+        set     3,a                 ; enable the BIOS ROM in case it was shadowed
+        out0    (Z182_SYSCONFIG),a  
         ld      hl, #msg
         rst     #0x20
-        ld      b, #kernsz
-        ld      hl, #1          ; kernel starts in the second sector on the floppy
-        ld      de, #uzi        ; load address in memory
+        ld      a, (sectors)       ; load number of sectors -- set by flopboot-mkimage
+        ld      b, a
+        ld      hl, #1              ; kernel starts in the second sector on the floppy
+        ld      de, #fuzix_entry    ; load address in memory
 loop:
         push    bc
         push    hl
@@ -84,8 +75,8 @@ loop:
         ; setup for next block
         inc     hl
         djnz    loop
-        ; fall through on completion
-gouzi:  ld hl, #donemsg
+        ; completed loading
+        ld hl, #donemsg
         rst #0x20
         in0     a,(Z182_SYSCONFIG)
         set     3,a             ; disable ROM
@@ -99,9 +90,9 @@ gouzi:  ld hl, #donemsg
         inc hl
         ld (hl), a
         ; jump in to kernel code
-        jp      uzi
+        jp      fuzix_entry
 
-msg:    .ascii "Loading Fuzix ...  "
+msg:    .ascii "Loading ...  "
         .db 0
 
 whirl:  .ascii "/-\|"
@@ -154,3 +145,10 @@ div0:   ccf
         ret
 
 bfr:    ; next 512 bytes used as temporary buffer
+
+space:  .ds (510-(.-start))
+sectors:  .db 0
+checksum: .db 0
+.ifne (512-(.-start))
+.error something has gone wrong, this should assemble to exactly 512 bytes.
+.endif

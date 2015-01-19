@@ -10,7 +10,7 @@ OBJS  = $(AOBJS) $(COBJS) $(DOBJS)
 
 CROSS_CCOPTS += -I../dev/
 
-JUNK = *.rel *.lst *.asm *.sym *.rst *.map *.ihx *.bin flopboot.mem
+JUNK = *.rel *.lst *.asm *.sym *.rst *.map *.ihx *.bin
 
 all:	$(OBJS) flopboot.bin
 
@@ -24,16 +24,15 @@ $(DOBJS): %.rel: ../dev/%.c
 	$(CROSS_CC) $(CROSS_CCOPTS) -c $<
 
 clean:
-	rm -f $(OBJS) $(JUNK)  core *~ fuzix.com
+	rm -f $(OBJS) $(JUNK)  core *~ fuzix.com fuzix-boot.fdd
 
 z180.rel:		z180.s kernel.def ../cpu-z180/z180.s
 
 flopboot.bin:	flopboot.s
 	$(CROSS_AS) $(ASOPTS) flopboot.s
 	sdldz80 -nmi flopboot.rel
-	makebin -s 65536 flopboot.ihx > flopboot.mem
-	dd bs=512 count=1 skip=124 if=flopboot.mem of=flopboot.bin
-	././flopboot-cksum flopboot.bin
+	makebin -s 65536 flopboot.ihx > flopboot.bin
 
 image:
 	../cpm-loader/makecpmloader ../cpm-loader/cpmload.bin ../fuzix.bin 0x88 fuzix.com
+	./flopboot-mkimage flopboot.bin ../fuzix.bin fuzix-boot.fdd
