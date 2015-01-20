@@ -38,6 +38,7 @@
 
 	    .import outcharhex
 	    .import outxa
+	    .import incaxy
 
             .include "kernel.def"
             .include "../kernel02.def"
@@ -306,6 +307,13 @@ outchar:
 ;	we can use the shorter one for the CMOS chip
 ;
 vector:
+	    lda #')'
+	    sta $FF03
+	    pla
+	    tax
+	    pla
+	    jsr outxa
+	    jmp _trap_monitor
 	    pha
 	    txa
 	    pha
@@ -363,36 +371,39 @@ syscall_entry:
 
 	    stx U_DATA__U_CALLNO
 
+	    ; No arguments - skip all the copying and stack bits
+	    cpy #0
+	    beq noargs
+
 	    ; Remove the arguments. This is fine as by the time we go back
 	    ; to the user stack we'll have finished with them
 	    lda sp
+	    sta ptr1
 	    ldx sp+1
-	    jsr cincaxy
+	    stx ptr1+1
+	    jsr incaxy
 	    sta sp
 	    stx sp+1
 
-	    ldy #0
 	    ;
 	    ;	We copy the arguments but need to deal with the compiler
 	    ;   stacking in the reverse order. At this point ptr1 points
 	    ;	to the last byte of the arguments (first argument). We go
 	    ;	down the stack copying words up the argument list.
 	    ;
-
+	    ldx #0
 copy_args:
+	    dey
 	    lda (ptr1),y		; copy the arguments over
-	    sta U_DATA__U_ARGN,x
-	    iny
-            inx
+	    sta U_DATA__U_ARGN+1,x
+	    dey
 	    lda (ptr1),y
 	    sta U_DATA__U_ARGN,x
-            iny
-            dex
-            dex
-	    dex
-	    cpy #8
+            inx
+	    inx
+	    cpy #0
 	    bne copy_args
-
+noargs:
 	    ;
 	    ; Now we need to stack switch. Save the adjusted stack we want
 	    ; for return
@@ -402,12 +413,12 @@ copy_args:
 	    lda sp+1
 	    pha
 	    tsx
-	    stx U_DATA__U_SP
+	    stx U_DATA__U_SYSCALL_SP
 ;
 ;	We save a copy of the high byte of sp here as we may need it to get
 ;	the brk() syscall right.
 ;
-	    sta U_DATA__U_SP + 1
+	    sta U_DATA__U_SYSCALL_SP + 1
 ;
 ;
 ;	FIXME: we should check here if there is enough 6502 stack left
@@ -435,7 +446,7 @@ copy_args:
 ;
 ;	Correct the system stack
 ;
-	    ldx U_DATA__U_SP
+	    ldx U_DATA__U_SYSCALL_SP
 	    txs
 ;
 ;	From that recover the C stack and the syscall buf ptr
@@ -468,9 +479,6 @@ platform_doexec:
 	    stx ptr1+1
 	    sta ptr1
 
-	    ldy #'E'
-	    sty $FF03
-	    jsr outxa
 ;
 ;	Set up the C stack
 ;
@@ -479,7 +487,6 @@ platform_doexec:
 	    ldx U_DATA__U_ISP+1
             stx sp+1
 
-	    jsr outxa
 ;
 ;	Set up the 6502 stack
 ;
@@ -495,16 +502,6 @@ _unix_syscall_i:
 _platform_interrupt_i:
 	    jmp _platform_interrupt
 
-
-;
-;	Hack for common runtime helper (fixme move helpers to common)
-;
-cincaxy:sty tmp1
-	clc
-	adc tmp1
-	bcc incaxy2
-	inx
-incaxy2:rts
 
 ;
 ;	ROM disc copier (needs to be in common), call with ints off

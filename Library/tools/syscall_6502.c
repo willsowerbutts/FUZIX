@@ -21,8 +21,17 @@ static void write_call(int n)
   fprintf(fp, "\t.export _%s\n\n", syscall_name[n]);
   fprintf(fp, "\t.import __syscall\n\n", syscall_name[n]);
   fprintf(fp, "\t.import pushax\n\n");
-  fprintf(fp, ".proc _%s\n\tjsr pushax\n\tldx #%d\n", syscall_name[n], n);
-  fprintf(fp, "\tldy #%d\n", 2 * syscall_args[n]);
+  fprintf(fp, ".proc _%s\n", syscall_name[n]);
+  if (syscall_args[n] == VARARGS) {
+    /* We are not entered as fastcall, in addition y holds the argument
+       count for us already. All the work is already done */
+  } else {
+    /* This is basically "fastcall to cdecl and set y" */
+    if (syscall_args[n])
+      fprintf(fp, "\tjsr pushax\n");
+    fprintf(fp, "\tldy #%d\n", 2 * syscall_args[n]);
+  }
+  fprintf(fp, "\tldx #%d\n", n);
   fprintf(fp, "\tjmp __syscall\n\n.endproc\n");
   fclose(fp);
 }
