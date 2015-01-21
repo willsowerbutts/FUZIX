@@ -108,6 +108,8 @@ Kernel/platform
 Kernel/platform-p112/flopboot.bin
 Kernel/platform-p112/flopboot.ihx
 Kernel/platform-p112/fuzix-boot.fdd
+Kernel/platform-n8vem-mark4/diskboot.bin
+Kernel/platform-n8vem-mark4/diskboot.ihx
 Kernel/relocs.dat
 Kernel/tools/analysemap
 Kernel/tools/bankld/sdldz80
