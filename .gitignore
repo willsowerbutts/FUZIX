@@ -1,4 +1,5 @@
-# SDCC stuff
+*.dd
+*.asm
 *.lnk
 *.lst
 *.map
@@ -6,9 +7,6 @@
 *.rel
 *.rst
 *.sym
-*.asm
-fuzix.bin
-fuzix.com
 Applications/levee/levee.lk
 Applications/levee/levee.noi
 Applications/util/*.bin
@@ -107,6 +105,9 @@ Kernel/fuzix.tmp
 Kernel/hogs.txt
 Kernel/hogs.txt.old
 Kernel/platform
+Kernel/platform-p112/flopboot.bin
+Kernel/platform-p112/flopboot.ihx
+Kernel/platform-p112/fuzix-boot.fdd
 Kernel/relocs.dat
 Kernel/tools/analysemap
 Kernel/tools/bankld/sdldz80
@@ -132,3 +133,5 @@ Standalone/fsck
 Standalone/mkfs
 Standalone/size
 Standalone/ucp
+fuzix.bin
+fuzix.com
