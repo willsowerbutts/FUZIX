@@ -13,9 +13,9 @@
 #include "devfd.h"
 
 /* functions implemented in devfd2.s */
-extern bool devfd_init(uint8_t minor);
-extern bool devfd_read(uint8_t minor);
-extern bool devfd_write(uint8_t minor);
+extern int devfd_init(uint8_t minor);
+extern int devfd_read(uint8_t minor);
+extern int devfd_write(uint8_t minor);
 
 /* variables in devfd2.s */
 extern uint8_t devfd_track, devfd_sector, devfd_error;
@@ -64,7 +64,7 @@ static int fd_transfer(bool rwflag, uint8_t minor, uint8_t rawflag)
 	}
 
 	devfd_track = firstblk / devfd_dtbl[minor].spt;
-	devfd_sector = firstblk % devfd_dtbl[minor].spt;	/* Base 0 Sect # */
+	devfd_sector = firstblk % devfd_dtbl[minor].spt; /* Base 0 Sect # */
 	devfd_error = 0;
 
 	if (devfd_track >= devfd_dtbl[minor].ncyl){
@@ -74,21 +74,12 @@ static int fd_transfer(bool rwflag, uint8_t minor, uint8_t rawflag)
 	blocks = nblocks;
 	for (;;)
 	{
-		///////////////////////////////
-		kprintf("devfd_%s(%d): track=%d, sector=%d, nblocks=%d, buffer=0x%x\n", rwflag?"read":"write", minor, devfd_track, devfd_sector, nblocks, devfd_buffer);
-		///////////////////////////////
-
 		irq = di();
 		if (rwflag)
 			retc = devfd_read(minor);
 		else
 			retc = devfd_write(minor);
 		irqrestore(irq);
-
-		///////////////////////////////
-		//kprintf("retc=%d, devfd_error=%d\n", retc, devfd_error);
-		//trap_monitor();
-		///////////////////////////////
 
 		if (retc)
 			break;
