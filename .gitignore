@@ -137,3 +137,6 @@ Standalone/size
 Standalone/ucp
 fuzix.bin
 fuzix.com
+Applications/levee/levee
+Applications/levee/levee.bin
+sdcard.img.gz
