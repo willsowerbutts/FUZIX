@@ -133,6 +133,7 @@ bget ../../Applications/util/ln
 bget ../../Applications/util/logname
 bget ../../Applications/util/ls
 bget ../../Applications/util/man
+bget ../../Applications/util/mandel
 bget ../../Applications/util/mkdir
 bget ../../Applications/util/mkfs
 bget ../../Applications/util/mkfifo
@@ -173,6 +174,7 @@ bget ../../Applications/util/whoami
 bget ../../Applications/util/write
 bget ../../Applications/util/xargs
 bget ../../Applications/util/yes
+bget ../../Applications/levee/levee
 chmod 0755 banner
 chmod 0755 basename
 chmod 0755 bd
@@ -207,6 +209,7 @@ chmod 0755 ln
 chmod 0755 logname
 chmod 0755 ls
 chmod 0755 man
+chmod 0755 mandel
 chmod 0755 mkdir
 chmod 0755 mkfs
 chmod 0755 mkfifo
@@ -247,3 +250,4 @@ chmod 0755 whoami
 chmod 0755 write
 chmod 0755 xargs
 chmod 0755 yes
+chmod 0755 levee
