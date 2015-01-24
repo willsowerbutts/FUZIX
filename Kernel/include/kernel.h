@@ -705,7 +705,7 @@ CODE2 void timer_interrupt(void);
 CODE2 void doexit (int16_t val, int16_t val2);
 CODE2 void panic(char *deathcry);
 CODE2 void exec_or_die(void);
-#define need_resched() (nready != 1 && runticks)
+#define need_resched() (nready != 1 && runticks >= udata.u_ptab->p_priority)
 
 
 /* select.c */
