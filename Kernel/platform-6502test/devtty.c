@@ -33,6 +33,15 @@ void kputchar(char c)
 	tty_putc(1, c);
 }
 
+bool tty_writeready(uint8_t minor)
+{
+	uint8_t c;
+	if (minor == 1)
+		return 1;
+	c = *uartb;
+	return c & 1;
+}
+
 void tty_putc(uint8_t minor, unsigned char c)
 {
 	minor;
@@ -42,7 +51,6 @@ void tty_putc(uint8_t minor, unsigned char c)
 		return;
 	}
 #endif	
-	while(!(*uartb & 1));
 	*uarta = c;
 }
 

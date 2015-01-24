@@ -75,6 +75,12 @@ void tty_putc(uint8_t minor, unsigned char c)
     }
 }
 
+bool tty_writeready(uint8_t minor)
+{
+    minor;
+    return 1;
+}
+
 /* kernel writes to system console -- never sleep! */
 void kputchar(char c)
 {

@@ -45,6 +45,16 @@ void kputchar(char c)
 	tty_putc(1, c);
 }
 
+bool tty_writeready(uint8_t minor)
+{
+	uint8_t reg = 0xFF;
+	if (minor == 3)
+		reg = serialAc;
+	if (minor == 4)
+		reg = serialBc;
+	return reg & 4;
+}
+
 void tty_putc(uint8_t minor, unsigned char c)
 {
 	irqflags_t irq;
@@ -60,13 +70,10 @@ void tty_putc(uint8_t minor, unsigned char c)
 		irqrestore(irq);
 		return;
 	}
-	if (minor == 3){
-		while(!(serialAc & 4));
+	if (minor == 3)
 		serialAd = c;
-	}else{
-		while(!(serialBc & 4));
+	else
 		serialBd = c;
-	}
 }
 
 int tty_carrier(uint8_t minor)

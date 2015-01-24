@@ -30,6 +30,13 @@ void kputchar(char c)
 	tty_putc(2, c);
 }
 
+/* Both console and debug port are always ready */
+bool tty_writeready(uint8_t minor)
+{
+	minor;
+	return 1;
+}
+
 void tty_putc(uint8_t minor, unsigned char c)
 {
 	minor;
@@ -159,6 +166,8 @@ void tty_interrupt(void)
 #if 0
 	uint8_t a = irqmap;
 	uint8_t c;
+	if (!(a & 2))
+		wakeup(&ttydata[2]);
 	if (!(a & 1)) {
 		/* work around sdcc bug */
 		c = uarta;

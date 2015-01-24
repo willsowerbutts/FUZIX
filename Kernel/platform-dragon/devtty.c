@@ -33,16 +33,23 @@ void kputchar(char c)
 	tty_putc(1, c);
 }
 
+bool tty_writeready(uint8_t minor)
+{
+	uint8_t c;
+	if (minor == 1)
+		return 1;
+	c = *uart_status;
+	return c & 16;	/* TX DATA empty */
+}
+
 /* For DragonPlus we should perhaps support both monitors 8) */
 
 void tty_putc(uint8_t minor, unsigned char c)
 {
 	if (minor == 1) {
 		vtoutput(&c, 1);
-	} else {
-		while( !(*uart_status & 16) ); /* wait for TX DATA empty */
+	} else
 		*uart_data = c;	/* Data */
-	}
 }
 
 void tty_setup(uint8_t minor)

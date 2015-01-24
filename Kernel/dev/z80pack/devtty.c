@@ -32,17 +32,27 @@ void kputchar(char c)
     tty_putc(1, c);
 }
 
+bool tty_writeready(uint8_t minor)
+{
+    uint8_t s;
+
+    if (minor == 1)
+        return 1;
+    if (minor == 2)
+        s = tty2stat;
+    else
+        s = tty3stat;
+    return s & 2;
+}
+
 void tty_putc(uint8_t minor, unsigned char c)
 {
     if (minor == 1)
         tty1data = c;
-    else if (minor == 2){
-        while(!(tty2stat & 2));
+    else if (minor == 2)
         tty2data = c;
-    }else{
-        while(!(tty3stat & 2));
+    else
         tty3data = c;
-    }
 }
 
 /* Called every timer tick */
@@ -61,6 +71,10 @@ void tty_pollirq(void)
         c = tty3data;
         tty_inproc(3, c);
     }
+    if (tty2stat & 2)
+        wakeup(&ttydata[2]);
+    if (tty3stat & 2)
+        wakeup(&ttydata[3]);
 }    
 
 void tty_setup(uint8_t minor)
