@@ -6,7 +6,10 @@
 static int bload(inoptr i, uint16_t bl, uint16_t base, uint16_t len)
 {
 	blkno_t blk;
+#ifdef CONFIG_LEGACY_EXEC
 	uint8_t *buf;
+#endif
+
 	while(len) {
 		uint16_t cp = min(len, 512);
 		blk = bmap(i, bl, 1);
