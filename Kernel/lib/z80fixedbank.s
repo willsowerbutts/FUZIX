@@ -22,7 +22,6 @@
         .globl _runticks
         .globl unix_syscall_entry
         .globl interrupt_handler
-        .globl dispatch_process_signal
 	.globl _swapper
 
 	.globl map_kernel
@@ -278,8 +277,8 @@ _dofork:
 ;	Assumption - fits into a fixed number of whole 256 byte blocks
 ;
 bankfork:
-	ld b, #(U_DATA_STASH - PROG_BASE)/256
-	ld hl, #PROG_BASE	; base of memory to fork (vectors included)
+	ld b, #(U_DATA_STASH - PROGBASE)/256
+	ld hl, #PROGBASE	; base of memory to fork (vectors included)
 bankfork_1:
 	push bc			; Save our counter and also child offset
 	push hl
