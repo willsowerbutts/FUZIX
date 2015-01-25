@@ -388,7 +388,7 @@ void tty_putc_wait(uint8_t minor, unsigned char c)
            -1 - blocked, don't spin (eg flow controlled) */
 	if (!udata.u_ininterrupt) {
 		while ((t = tty_writeready(minor)) != 1)
-		        if (need_resched() || t)
+		        if (t || need_resched())
 				psleep(&ttydata[minor]);
 	}
 	tty_putc(minor, c);
