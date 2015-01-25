@@ -11,6 +11,21 @@
    Provide the platform-specific SPI functions listed below to
    drive the SPI bus on your hardware, for an example of how to
    do this see platform-n8vem-mark4/devsdspi.c
+
+   The required functions are:
+
+    - sd_spi_clock(): switch between a slow clock (100--400kHz) for
+    initialisation, and a fast (up to 20--25MHz) for normal operation.
+
+    - sd_spi_raise_cs(), sd_spi_lower_cs(): raise or lower the CS line.
+
+    - sd_spi_transmit_byte(): transmit a single byte
+
+    - sd_spi_receive_byte(): receive a single byte
+
+    - sd_spi_transmit_sector(): transmit a 512-byte sector (params in blk_op)
+
+    - sd_spi_receive_sector(): receive a 512-byte sector (params in blk_op)
 */
 
 
@@ -23,8 +38,8 @@ void sd_spi_raise_cs(uint8_t drive);
 void sd_spi_lower_cs(uint8_t drive);
 void sd_spi_transmit_byte(uint8_t drive, uint8_t byte);
 uint8_t sd_spi_receive_byte(uint8_t drive);
-bool sd_spi_receive_block(uint8_t drive, uint8_t *ptr, unsigned int length);
-bool sd_spi_transmit_block(uint8_t drive, uint8_t *ptr, unsigned int length);
+bool sd_spi_receive_sector(uint8_t drive);
+bool sd_spi_transmit_sector(uint8_t drive);
 
 /* Definitions for MMC/SDC command */
 #define CMD0    (0x40+0)    /* GO_IDLE_STATE */
@@ -52,6 +67,7 @@ bool sd_spi_transmit_block(uint8_t drive, uint8_t *ptr, unsigned int length);
 #define CT_SD2   0x40
 #define CT_BLOCK 0x80 /* set if block addressed, unset if byte addressed */
 #define CT_SDC   (CT_SD1|CT_SD2)
+
 /* Low four bits of driver_data are available to store drive number */
 #define DRIVE_NR_MASK 0x0F
 

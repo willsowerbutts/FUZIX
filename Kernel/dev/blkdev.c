@@ -91,9 +91,9 @@ static int blkdev_transfer(uint8_t minor, uint8_t rawflag)
         case 1:
             /* read some number of 512-byte sectors directly to user memory */
             blk_op.nblock = (udata.u_count >> BLKSHIFT);
-            if(udata.u_count & BLKMASK) /* check it's an integral number */
-                panic("blkdev: bad u_count");
-            blk_op.lba = (udata.u_offset >> BLKSHIFT); /* WRS: surely we have a problem with > sector 128 ? */
+            if((udata.u_count | (uint16_t)udata.u_offset) & BLKMASK)
+                panic("blkdev: not integral");
+            blk_op.lba = (udata.u_offset >> BLKSHIFT);
             blk_op.addr = udata.u_base;
             blk_op.is_user = true;
             break;
