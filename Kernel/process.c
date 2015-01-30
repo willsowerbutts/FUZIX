@@ -305,7 +305,7 @@ void load_average(void)
 
 	while (i++ < 3) {
 		r->average = ((((r->average - (nr << 8)) * r->exponent) +
-				((unsigned long)nr) << 16)) >> 8;
+				(((unsigned long)nr) << 16)) >> 8);
 		r++;
 	}
 }
@@ -434,7 +434,7 @@ void chksigs(void)
 {
 	uint8_t j;
 	uint32_t pending = udata.u_ptab->p_pending & ~udata.u_ptab->p_held;
-	int16_t (**svec)() = &udata.u_sigvec[0];
+	int (**svec)(int) = &udata.u_sigvec[0];
 	uint32_t m;
 
 	// any signals pending?

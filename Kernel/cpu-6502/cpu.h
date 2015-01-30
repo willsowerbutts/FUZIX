@@ -9,6 +9,7 @@ typedef signed int size_t;
 typedef uint8_t irqflags_t;
 
 typedef int16_t arg_t;
+typedef uint16_t uarg_t;		/* Holds arguments */
 typedef uint16_t usize_t;		/* Largest value passed by userspace */
 typedef int16_t susize_t;
 typedef uint16_t uaddr_t;
@@ -29,7 +30,7 @@ extern size_t __fastcall__ strlen(const char *);
 
 /* High byte is saved, low byte is a mystery so take worst case. Also allow
    a bit less as C stack is not return stack */
-#define brk_limit() ((udata.u_syscall_sp | 0xFF) - 384)
+#define brk_limit() ((((uint16_t)udata.u_syscall_sp) | 0xFF) - 384)
 
 #define staticfast	static
 
@@ -48,6 +49,9 @@ typedef union {            /* this structure is endian dependent */
       uint16_t high;
     } h;
 } ticks_t;
+
+/* Sane behaviour for unused parameters */
+#define used(x)
 
 /* We don't yet have bank attributes and banking for 6502 */
 #define CODE1
