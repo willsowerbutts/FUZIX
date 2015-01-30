@@ -20,6 +20,7 @@
 	    .globl map_restore
 	    .globl platform_interrupt_all
 	    .globl _kernel_flag
+	    .globl _irqwork
 
             ; exported debugging tools
             .globl _trap_monitor
@@ -97,59 +98,42 @@ _trap_monitor:
             ; it's never a dull day with ROM around!
 
 platform_interrupt_all:
+	    in a,(TIMER_STATUS)
+	    bit 7, a
+	    jr z, not_timer
+	    ld a,(_irqwork)
+	    set 0, a
+	    ld (_irqwork),a
+	    xor a
+	    out (TIMER_STATUS),a
+not_timer:
+	    in a,(UART0_STATUS)
+	    ld b, a
+	    and #0xC0
+	    ret z
+	    ld a, #0xfc
+	    and b
+	    out (UART0_STATUS),a
+	    and #0xC0
+	    ld hl,#_irqwork
+	    or (hl)
+	    ld (hl),a
 	    ret
+
+; FIXME: this in common is not ideal but not clear where it should go
+; to allow queued stuff to be handled reliably
+_irqwork:   .dw 0
 
 ; -----------------------------------------------------------------------------
 ; KERNEL MEMORY BANK (below 0xF000, only accessible when the kernel is mapped)
 ; -----------------------------------------------------------------------------
             .area _CODE
 
+;
+;	FIXME: the old code used the SRAM bank for bits but in fact if
+;	anything we want to use it for part of the kernel
+;
 init_early:
-            ; use MMU to map fast SRAM (memory page 0x2001) into frame at 0xf000
-            ld a, #0x0F
-            out (MMU_SELECT), a
-            ld a, #0x20
-            out (MMU_FRAMEHI), a
-            ld a, #0x01
-            out (MMU_FRAMELO), a
-            ; otherwise we assume the MMU is set up with DRAM from 0x0000 to 0xEFFF.
-
-            ; we need to recover the contents of 0xF000, especially as it holds the stack 
-            ; (with our return address on it!) the interrupt handler code, etc.
-
-            ; map RAM that was at 0xF000 into 0xE000
-            ld a, #0x0E
-            out (MMU_SELECT), a
-            xor a
-            out (MMU_FRAMEHI), a
-            ld a, #0x0F
-            out (MMU_FRAMELO), a
-
-            ; copy 0xE000 -> 0xF000 for 0x1000 bytes
-            ld hl, #0xE000
-            ld de, #0xF000
-            ld bc, #0x1000
-            ldir
-
-            ; map page 001F (which will become the top page for our first process, init) into frame at 0xf000
-            ld a, #0x0F
-            out (MMU_SELECT), a
-            xor a
-            out (MMU_FRAMEHI), a
-            ld a, #0x1f
-            out (MMU_FRAMELO), a
-
-            ; copy 0xE000 -> 0xF000 for 0x1000 bytes
-            ld hl, #0xE000
-            ld de, #0xF000
-            ld bc, #0x1000
-            ldir
-            
-            ; put 0xE000 back as it was
-            ld a, #0x0E
-            out (MMU_SELECT), a
-            out (MMU_FRAMELO), a
-
             ret
 
 init_hardware:
@@ -188,7 +172,7 @@ init_hardware:
             ; program UART0 for interrupts on RX (not TX ... yet)
             in a, (UART0_STATUS)
             and #0xF0 ; clear bottom four bits only
-            or  #0x0c ; enable TX & RX ints
+            or  #0x08 ; enable RX   // TX & RX ints was 0xc
             out (UART0_STATUS), a
 
             ; program UART1 similarly
@@ -267,38 +251,6 @@ tpc1loop:   ; wait for transmitter to be idle
             out (UART1_DATA), a
             ret
 
-uart0_input: ; on arrival we know UART0_STATUS bit 7 is set (RX ready); we must preserve BC
-            push bc
-            in a, (UART0_DATA)
-            ld b, a
-            ld c, #1
-indocall:   push bc
-            call _tty_inproc
-            pop bc
-            pop bc
-            ret
-
-uart1_input: ; on arrival we know UART1_STATUS bit 7 is set (RX ready); we must preserve BC
-            push bc
-            in a, (UART1_DATA)
-            ld b, a
-            ld c, #2
-            jr indocall
-
-uart0_output: ; on arrival we know UART0_STATUS bit 6 is clear (TX idle); we must preserve BC
-            push bc
-            ld c, #1
-outdocall:  push bc
-            call _tty_outproc
-            pop bc
-            pop bc
-            ret
-
-uart1_output: ; on arrival we know UART1_STATUS bit 6 is clear (TX idle); we must preserve BC
-            push bc
-            ld c, #2
-            jr outdocall
-
 ; write out DE bytes to MMU page17 register from (HL)
 page17out:
             ld bc, #MMU_PAGE17 ; also loads B=0
@@ -348,6 +300,39 @@ readlastbytes:
             inir
             ret
 
+mmu_state_dump:
+            push bc
+            push hl
+            ld c, #0
+            ld b, #16
+dumpnextframe:
+            ld hl, #mmumsg
+            call outstring
+            ld a, c
+            out (MMU_SELECT), a
+            call outnibble
+            ld a, #':'
+            call outchar
+            ld a, #' '
+            call outchar
+            in a, (MMU_FRAMEHI)
+            ld h, a
+            in a, (MMU_FRAMELO)
+            ld l, a
+            call outhl
+            call outnewline
+            inc c
+            djnz dumpnextframe
+            pop hl
+            pop bc
+            ret
+
+
+;------------------------------------------------------------------------------
+; COMMON MEMORY PROCEDURES FOLLOW
+
+            .area _COMMONMEM
+
 _program_vectors:
             ; we are called, with interrupts disabled, by both newproc() and crt0
             di ; just to be sure
@@ -395,39 +380,6 @@ _program_vectors:
 mmumsg:     .ascii "MMU page "
             .db 0
 
-mmu_state_dump:
-            push bc
-            push hl
-            ld c, #0
-            ld b, #16
-dumpnextframe:
-            ld hl, #mmumsg
-            call outstring
-            ld a, c
-            out (MMU_SELECT), a
-            call outnibble
-            ld a, #':'
-            call outchar
-            ld a, #' '
-            call outchar
-            in a, (MMU_FRAMEHI)
-            ld h, a
-            in a, (MMU_FRAMELO)
-            ld l, a
-            call outhl
-            call outnewline
-            inc c
-            djnz dumpnextframe
-            pop hl
-            pop bc
-            ret
-
-
-
-;------------------------------------------------------------------------------
-; COMMON MEMORY PROCEDURES FOLLOW
-
-            .area _COMMONMEM
 
 ;
 ; Mapping routines. Not yet all fixed up for the new style memory management
@@ -440,7 +392,7 @@ dumpnextframe:
 map_process:
 	    ld a, h
  	    or l
-	    jr nz, map_process_always
+	    jr nz, map_loadhl
 	    ld hl, #os_bank
 	    jr map_loadhl
 
@@ -488,18 +440,20 @@ map_loadhl:
 	    ;	page set. We have to do some work as we've got a rather
 	    ;	fancy MMU while Fuzix is expecting simple banks
 	    ;
+	    ;	FIXME: IRQ handling review ?
+	    ;
 	    push af
 	    push bc
 	    push de
 	    ld de, #map_current
-	    push hl
 	    ldi
 	    ldi
 	    ldi
 	    ldi
-	    pop hl
-	    ld bc, #MMU_SELECT	; 	page 0, MMU select for port
-	    xor a
+	    ; We must map from the copy, the original may be unmapped as we
+	    ; process it !
+	    ld hl, #map_current
+	    ld bc, #MMU_SELECT	; 	MMU select for port
 	    call map4
 	    call map4
 	    call map4
@@ -526,8 +480,7 @@ map4:	    push hl
 map3or4:
 	    ; Load the frame pointer first to free up a register
 	    ld e, (hl)		;	pageframe (in 16K terms)
-
-	    add b		;	stop point
+	    add b
 	    ld l, a		; 	save stop marker
 
 	    ; Convert the frame pointer to something useful
@@ -559,9 +512,9 @@ saved_map:  .db 0, 0, 0, 0
 map_current: .db 0, 0, 0, 0
 
 ; outchar: Wait for UART TX idle, then print the char in A
-; destroys: AF
 outchar:
             push bc
+	    push af
             ld b, a
             ; wait for transmitter to be idle
 ocloop:     in a, (UART0_STATUS)
@@ -570,5 +523,6 @@ ocloop:     in a, (UART0_STATUS)
             ; now output the char to serial port
             ld a, b
             out (UART0_DATA), a
+	    pop af
             pop bc
             ret
