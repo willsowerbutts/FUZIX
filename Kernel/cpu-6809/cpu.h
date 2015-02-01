@@ -9,6 +9,7 @@ typedef signed int size_t;
 typedef uint8_t irqflags_t;
 
 typedef int16_t arg_t;
+typedef uint16_t uarg_t;		/* Holds arguments */
 typedef uint16_t usize_t;		/* Largest value passed by userspace */
 typedef int16_t susize_t;
 typedef uint16_t uaddr_t;		/* A user address must fit this */
@@ -18,6 +19,7 @@ extern irqflags_t di(void);
 extern void irqrestore(irqflags_t f);
 
 #define EMAGIC    0x0E    /* Header of executable  (JMP) */
+#define EMAGIC_2  0x20    /* BRA */
 /* Allow a minimum of 512 bytes gap between stack and top of allocations */
 #define brk_limit() (udata.u_syscall_sp - 512)
 
