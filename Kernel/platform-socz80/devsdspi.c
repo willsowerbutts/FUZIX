@@ -84,6 +84,7 @@ bool sd_spi_receive_sector(uint8_t drive) __naked
     call nz,map_process_always
     call rx256
     call rx256
+xferout:
     pop af
     call nz,map_kernel
     ret
@@ -107,18 +108,10 @@ bool sd_spi_transmit_sector(uint8_t drive) __naked
     or a	; Set the Z flag up and save it, dont do it twice
     push af
     call nz,map_process_always
-    call tx256
-    call tx256
-    pop af
-    call nz,map_kernel
-    ret
-tx256:
     ld a,#0xFF
-    ld bc, #SD_SPI_RX * 256
-tx256_1:
-    out (SD_SPI_TX),a   ; we could use (c),a on newer VHDL
-    outi
-    jr nz, tx256_1
-    ret
+    ld bc, #SD_SPI_TX
+    otir
+    otir
+    jr xferout
   __endasm;
 }

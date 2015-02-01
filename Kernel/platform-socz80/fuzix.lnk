@@ -10,7 +10,7 @@ platform-socz80/socz80.rel
 start.rel
 version.rel
 usermem.rel
-platform-socz80/usermem.rel
+usermem_std-z80.rel
 platform-socz80/tricks.rel
 platform-socz80/main.rel
 bank16k.rel
