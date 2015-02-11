@@ -13,7 +13,7 @@
 /* Fixed banking: 8 x 64K banks, top 4KB is shared with kernel, 60KB-62KB is user memory  */
 #define CONFIG_BANK_FIXED
 #define MAX_MAPS	8
-#define MAP_SIZE	PROGTOP    /* WRS: I feel this should be 60KB, but setting it so breaks pagemap_realloc() when exec calls it
+#define MAP_SIZE	PROGTOP    /* WRS: I feel this should be 60KB, but setting it so breaks pagemap_realloc() when exec calls it */
 
 /* Banks as reported to user space */
 #define CONFIG_BANKS	1
