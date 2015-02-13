@@ -47,10 +47,11 @@ table, you can use dd as follows;
 To write the kernel image to the disk drive, use dd as follows;
     dd if=fuzix.bin bs=512 seek=2 of=/dev/sdX
 
+The root filesystem device can be specified as either a decimal number, or as a
+a device name (without the /dev prefix); hda, hdb, hda1, hda2, etc.
+
 When booting the system from both UNA BIOS and CP/M you can specify the root
 filesystem device on the command line after the command name or unit number.
-You can enter either a device number, or a device name (without the "/dev"
-prefix).
 
 For example, with root filesystem on /dev/hdb1 (minor #17) at the CP/M command
 prompt:
@@ -62,3 +63,7 @@ And to boot from unit 3 in UNA BIOS:
 
     Boot UNA unit number or ROM? [R,X,0..3] (R): 3 hdb1
 or  Boot UNA unit number or ROM? [R,X,0..3] (R): 3 17
+<<<<<<< HEAD
+=======
+
+>>>>>>> alan/master
