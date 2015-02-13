@@ -3,6 +3,7 @@
 #include <kdata.h>
 #include <printf.h>
 #include <tty.h>
+#include <config.h>
 
 #define BAD_ROOT_DEV 0xFFFF
 
@@ -82,6 +83,9 @@ void create_init(void)
 	udata.u_argn2 = (arg_t)(PROGLOAD + 0xb); /* Environment (none) */
 }
 
+#ifdef CONFIG_BOOTDEVICE
+extern uint16_t bootdevice(unsigned char *s);
+#else
 /* to sensibly parse device names this needs to be platform-specific,
    so for now it only parses device numbers */
 uint16_t bootdevice(unsigned char *s)
@@ -102,6 +106,7 @@ uint16_t bootdevice(unsigned char *s)
         s++;
     }
 }
+#endif
 
 void fuzix_main(void)
 {

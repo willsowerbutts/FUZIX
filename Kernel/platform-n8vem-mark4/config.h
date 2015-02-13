@@ -14,6 +14,8 @@
 #define CONFIG_BANK_FIXED
 /* Permit large I/O requests to bypass cache and go direct to userspace */
 #define CONFIG_LARGE_IO_DIRECT
+/* Platform defined bootdevice() */
+#define CONFIG_BOOTDEVICE
 /* 8 60K banks, 1 is kernel */
 #define MAX_MAPS	8
 #define MAP_SIZE	PROGTOP    /* WRS: I feel this should be 60KB, but setting it so breaks pagemap_realloc() when exec calls it */
