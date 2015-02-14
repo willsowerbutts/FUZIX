@@ -21,11 +21,11 @@
 /* Banks as reported to user space */
 #define CONFIG_BANKS	1
 
-#define TICKSPERSEC 100U   /* Ticks per second */
+#define TICKSPERSEC 40U     /* Ticks per second */
 #define PROGBASE    0x0000  /* also data base */
 #define PROGLOAD    0x0100  /* also data base */
 #define PROGTOP     0xF800  /* Top of program, base of U_DATA copy */
-#define PROC_SIZE   64	  /* Memory needed per process */
+#define PROC_SIZE   64      /* Memory needed per process */
 
 #define BOOT_TTY (512 + 1)/* Set this to default device for stdio, stderr */
                           /* In this case, the default is the first TTY device */
