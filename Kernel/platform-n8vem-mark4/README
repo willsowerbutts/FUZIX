@@ -63,7 +63,4 @@ And to boot from unit 3 in UNA BIOS:
 
     Boot UNA unit number or ROM? [R,X,0..3] (R): 3 hdb1
 or  Boot UNA unit number or ROM? [R,X,0..3] (R): 3 17
-<<<<<<< HEAD
-=======
 
->>>>>>> alan/master
