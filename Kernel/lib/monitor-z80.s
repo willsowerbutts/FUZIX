@@ -34,7 +34,6 @@ monitor_entry:  di                      ; turn off pesky interrupts
                 ld sp, #monitor_stack
                 push bc                 ; orig PC
                 ex de,hl                ; orig SP -> DE
-                call outnewline
                 ld hl, #entrystr1
                 call outstring
                 ex de,hl                ; orig SP -> HL
