@@ -6,6 +6,7 @@
 -b _CODE2=0xC000
 -b _CODE3=0xDB00
 -b _DISCARD=0x8000
+-b _DATA=0x5E00
 platform-zx128/crt0.rel
 platform-zx128/commonmem.rel
 platform-zx128/zx128.rel
@@ -22,6 +23,8 @@ usermem.rel
 platform-zx128/devices.rel
 platform-zx128/devmdv.rel
 platform-zx128/microdrive.rel
+platform-zx128/devfd.rel
+platform-zx128/disciple.rel
 devio.rel
 filesys.rel
 process.rel

@@ -5,18 +5,19 @@
 #include <devsys.h>
 #include <vt.h>
 #include <devmdv.h>
+#include <devfd.h>
 #include <devide.h>
 #include <blkdev.h>
 
 struct devsw dev_tab[] =  /* The device driver switch table */
 {
-  /* 0: /dev/fd		Floppy disc block devices */
-  {  no_open,      no_close,     no_rdwr,   no_rdwr,   no_ioctl },
+  /* 0: /dev/fd	Floppy disc block devices: disciple */
+  {  fd_open,      no_close,     fd_read,  fd_write,   no_ioctl },
 #ifdef CONFIG_IDE
   /* 1: /dev/hd		Hard disc block devices */
-  {  blkdev_open,  no_close,     blkdev_read,   blkdev_write,   blkdev_ioctl },
+  {  blkdev_open,  no_close,     blkdev_read,   blkdev_write,  blkdev_ioctl },
 #else
-  {  no_open,      no_close,     no_rdwr,       no_rdwr,        no_ioctl },
+  {  no_open,      no_close,     no_rdwr,       no_rdwr,       no_ioctl },
 #endif
   /* 2: /dev/tty	TTY devices */
   {  tty_open,	   tty_close,    tty_read,      tty_write,     vt_ioctl },
