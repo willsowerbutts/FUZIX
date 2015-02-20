@@ -11,13 +11,6 @@
 
 #ifdef SWAPDEV
 
-#ifndef UDATA_SWAPSIZE
-#define UDATA_BLOCKS	0
-#endif
-
-#ifndef CONFIG_COMMON_COPY
-#define flush_cache(p)	do {} while(0)
-#endif
 
 uint8_t *swapbase;
 unsigned int swapcnt;
@@ -35,7 +28,15 @@ void swapmap_add(uint8_t swap)
 	swapmap[swapptr++] = swap;
 }
 
-static int swapread(uint16_t dev, blkno_t blkno, unsigned int nbytes,
+int swapmap_alloc(void)
+{
+        if (swapptr)
+                return swapmap[--swapptr];
+        else
+                return 0;
+}
+
+int swapread(uint16_t dev, blkno_t blkno, unsigned int nbytes,
                     uint8_t *buf)
 {
 	swapbase = buf;
@@ -45,7 +46,7 @@ static int swapread(uint16_t dev, blkno_t blkno, unsigned int nbytes,
 }
 
 
-static int swapwrite(uint16_t dev, blkno_t blkno, unsigned int nbytes,
+int swapwrite(uint16_t dev, blkno_t blkno, unsigned int nbytes,
 		     uint8_t *buf)
 {
 	swapbase = buf;
@@ -54,89 +55,6 @@ static int swapwrite(uint16_t dev, blkno_t blkno, unsigned int nbytes,
 	return ((*dev_tab[major(dev)].dev_write) (minor(dev), 2, 0));
 }
 
-/*
- *	Swap out the memory of a process to make room
- *	for something else
- */
-int swapout(ptptr p)
-{
-	uint16_t page = p->p_page;
-	uint16_t blk;
-	uint16_t map;
-#ifdef UDATA_SWAPSIZE
-	uint8_t *ptr;
-#endif
-
-	swapproc = p;
-
-	if (page) {
-#ifdef DEBUG
-		kprintf("Swapping out %x (%d)\n", p, p->p_page);
-#endif
-		/* Are we out of swap ? */
-		if (swapptr == 0)
-			return ENOMEM;
-                flush_cache(p);
-		map = swapmap[--swapptr];
-		blk = map * SWAP_SIZE;
-#ifdef UDATA_SWAPSIZE
-		/* Allow the platform to do things like handle the uarea stash */
-		ptr = swapout_prepare_uarea(p);
-		/* Write to disk if the platform asks us */
-		if (ptr)
-			swapwrite(SWAPDEV, blk, UDATA_SWAPSIZE,
-				  ptr);
-#endif
-		/* Write the app (and possibly the uarea etc..) to disk */
-		swapwrite(SWAPDEV, blk + UDATA_BLOCKS, SWAPTOP - SWAPBASE,
-			  SWAPBASE);
-		pagemap_free(p);
-		p->p_page = 0;
-		p->p_page2 = map;
-#ifdef DEBUG
-		kprintf("%x: swapout done %d\n", p, p->p_page);
-#endif
-	}
-#ifdef DEBUG
-	else
-		kprintf("%x: process already swapped!\n", p);
-#endif
-	return 0;
-}
-
-/*
- * Swap ourself in: must be on the swap stack when we do this
- */
-static void swapin(ptptr p)
-{
-	uint16_t blk = p->p_page2 * SWAP_SIZE;
-#ifdef UDATA_SWAPSIZE
-	uint8_t *ptr;
-#endif
-
-#ifdef DEBUG
-	kprintf("Swapin %x, %d\n", p, p->p_page);
-#endif
-	if (!p->p_page) {
-		kprintf("%x: nopage!\n", p);
-		return;
-	}
-
-	/* Return our swap */
-	swapmap[swapptr++] = p->p_page2;
-
-	swapproc = p;		/* always ourself */
-	swapread(SWAPDEV, blk + UDATA_BLOCKS, SWAPTOP - SWAPBASE,
-		 SWAPBASE);
-#ifdef UDATA_SWAPSIZE
-	ptr = swapin_prepare_uarea(p);
-	if (ptr)
-		swapread(SWAPDEV, blk, UDATA_SWAPSIZE, (uint8_t *) &udata);
-#endif
-#ifdef DEBUG
-	kprintf("%x: swapin done %d\n", p, p->p_page);
-#endif
-}
 
 /*
  *	Swap out process. As we have them all the same size we ignore
