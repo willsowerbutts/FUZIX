@@ -34,7 +34,7 @@
 /* Device parameters */
 #define NUM_DEV_TTY 5
 
-#define TTYDEV   (512+5)  /* System console (used by kernel, init) */
+#define TTYDEV   (512+1)  /* System console (used by kernel, init) */
 #define NBUFS    10       /* Number of block buffers */
 #define NMOUNTS	 4	  /* Number of mounts at a time */
 
