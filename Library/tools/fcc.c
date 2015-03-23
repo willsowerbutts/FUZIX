@@ -64,6 +64,18 @@ static struct arglist *arg_make(const char *p)
   return x;
 }
 
+struct arglist *machead, *mactail;
+
+static void add_macro(const char *p)
+{
+  struct arglist *a = arg_make(p);
+  if (machead == NULL)
+    machead = a;
+  else
+    mactail->next = a;
+  mactail = a;
+}
+
 struct arglist *srchead, *srctail;
 
 static void add_source(const char *p)
@@ -137,6 +149,12 @@ static void set_optimize(const char *p)
   opt = mstrdup(p);
   if (*opt && sscanf(opt, "%d", &optcode) != 1) {
     fprintf(stderr, "fcc: -O requires a value\n");
+    exit(1);
+  }
+  if (optcode > 4)
+    optcode = 4;
+  if (optcode < 0) {
+    fprintf(stderr, "fcc: negative optimisation is silly.\n");
     exit(1);
   }
   if (*opt == 0)
@@ -336,24 +354,29 @@ static void build_command(void)
   if (pedantic == 0)
     add_argument("--less-pedantic");
   if (werror == 1)
-    add_argument("-Werror");
+    add_argument("--Werror");
   if (unschar == 1)
     add_argument("-funsigned-char");
   if (debug == 1)
     add_argument("--debug");
-  /* Turn -O1/2/3 into something meaningful */
+  /* Turn -O1/2/3/4 into something meaningful */
   if (opt != NULL) {
     if (optcode > 0)
       add_argument("--max-allocs-per-node");
     if (optcode == 1)
       add_argument("30000");
-    if (optcode == 2)
+    if (optcode == 2 || optcode == 3)
       add_argument("100000");
-    if (optcode == 3)
+    if (optcode == 4)
       add_argument("250000");
+    if (optcode > 2)
+      add_argument("-D__FUZIX_OPT_SPEED__");
   }
-  /* Always size optimise */
-  add_argument("--opt-code-size");
+  /* Size optimise for all but high -O values */
+  if (opt == NULL || optcode < 3)
+    add_argument("--opt-code-size");
+  /* Macros */
+  add_argument_list(machead);
   /* Paths */
   add_option_list("-I", includehead);
   if (mode == MODE_LINK)
@@ -426,6 +449,9 @@ int main(int argc, const char *argv[]) {
           add_argument("-v");
           do_command();
           exit(0);
+        case 'D':
+          add_macro(p);
+          break;
         case 'l':
           add_library(p+2);
           break;

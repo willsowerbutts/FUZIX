@@ -37,7 +37,7 @@ What does FUZIX have over UZI
 * Address validation checks on all syscall copies
 * Builds with a modern ANSI C compiler (SDCC)
 * Kernel boots on both 6502, 6809 and Z80
-* Core code can be built for 6502, 6809, 68000 and Z80 so should be far more
+* Core code can be built for 6502, 6809, 68000, 8086 and Z80 so should be far more
 	portable
 * Core architecture designed to support building and maintaining
 	multiple target machines without forking each one
@@ -90,7 +90,6 @@ Tool Issues
 * No useful 8086 compiler option (started work on pcc 8086 but help
 	needed)
 * 6809 gcc and cc65 don't have long long 64bit (for sane time_t)
-* SDCC has long long bugs and gaps (SDCC has fixed these in the devel tree)
 * SDCC can generate ROMmable binaries but not banked ones
 * SDCC has no register passing function call support, and for some
 	stuff it really shows
@@ -113,7 +112,8 @@ ECB expansion bus only the PropIO V2 serial port is supported at this time.
 * TRS80 - boots to userspace in emulation, swapping, floppy and hard disc done
 * Z80Pack - used as a dev and test environment for both large swapping
 	multiprocess and for small single tasking
-* ZX Spectrum - can boot to loading a file system
+* Zeta v2 - initial port running to user space
+* ZX Spectrum 128K - can boot to shell but needs swap adding to get further
 
 Various other platforms are partly filled out to sanity check assumptions
 and start making progress on them. The main need there is now to tackle all

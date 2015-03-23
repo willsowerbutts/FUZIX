@@ -26,6 +26,7 @@ config FACTOR
 #include  <stdio.h>
 #include  <ctype.h>
 #include  <string.h>
+#include  <stdlib.h>
 
 static void factor(char *s)
 {
@@ -77,21 +78,22 @@ static void factor(char *s)
         l /= ll;
       }
     }
-    putc(stderr,'\n');
+    putc('\n', stderr);
   }
 }
+
+#define LINE_MAX 256
 
 int main(int argc,char *argv[])
 {
   if (argc > 1) {
     char **ss;
 
-    for (ss = argv[0]; *ss; ss++) factor(*ss);
+    for (ss = argv; *ss; ss++) factor(*ss);
   } else for (;;) {
-    char *s = 0;
-    size_t len = 0;
+    char s[LINE_MAX];
 
-    if (-1 == gets_s(&s, LINE_MAX)) break;
+    if (NULL == gets_s(s, LINE_MAX)) break;
     factor(s);
   }
 }
