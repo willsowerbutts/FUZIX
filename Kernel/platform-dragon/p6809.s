@@ -114,7 +114,7 @@ init_hardware:
 _program_vectors:
 	    pshs cc
 	    orcc #0x10
-	    lda #0x0E
+	    lda #0x7E
 	    sta 0		; NULL pointer trap
 ; FIXME: add a target address for NULL execution
 	    ldd #0xFFD5
@@ -165,9 +165,13 @@ outchar:
 ;outcharw:
 	    pshs x
 	    ldx traceptr
+	    cmpa #0x60		; mangle for 6847 VDU charset
+	    blo lc
+	    suba #0x20
+lc	    anda #0x3F
 	    sta ,x+
 	    stx traceptr
-	    puls x, pc
+	    puls x,pc
 ;	    ldb 0xff05
 ;	    bitb #0x04
 ;	    beq outcharw

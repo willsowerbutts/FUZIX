@@ -145,7 +145,7 @@ inoptr srch_mt(inoptr ino)
 	inoptr i_open();
 
 	for (j = 0; j < NDEVS; ++j)
-		if (fs_tab[j].s_mounted == SMOUNTED
+		if (swizzle16(fs_tab[j].s_mounted) == SMOUNTED
 		    && fs_tab[j].s_mntpt == ino) {
 			i_deref(ino);
 			return (i_open(j, ROOTINODE));
@@ -184,7 +184,7 @@ inoptr i_open(register int dev, register unsigned ino)
 		}
 	}
 
-	if (ino < ROOTINODE || ino >= (fs_tab[dev].s_isize - 2) * 8) {
+	if (ino < ROOTINODE || ino >= (swizzle16(fs_tab[dev].s_isize) - 2) * 8) {
 		printf("i_open: bad inode number\n");
 		return (NULLINODE);
 	}
@@ -315,9 +315,9 @@ int ch_link(inoptr wd, char *oldname, char *newname, inoptr nindex)
 
 	/* Update file length to next block */
 	if (swizzle32(wd->c_node.i_size) & 511)
-		wd->c_node.i_size =
+		wd->c_node.i_size = swizzle32(
 		    swizzle32(wd->c_node.i_size) + 512 -
-		    (swizzle16(wd->c_node.i_size) & 511);
+		    (swizzle32(wd->c_node.i_size) & 511));
 
 	return (1);
 }
@@ -468,7 +468,7 @@ unsigned i_alloc(int devno)
 
 	_sync();		/* Make on-disk inodes consistent */
 	k = 0;
-	for (blk = 2; blk < dev->s_isize; blk++) {
+	for (blk = 2; blk < swizzle16(dev->s_isize); blk++) {
 		buf = (struct dinode *) bread(devno, blk, 0);
 		for (j = 0; j < 8; j++) {
 			ifnot(buf[j].i_mode || buf[j].i_nlink)
@@ -850,7 +850,7 @@ blkno_t bmap(inoptr ip, blkno_t bn, int rwflg)
 	 * fetch the address from the inode
 	 * Create the first indirect block if needed.
 	 */
-	ifnot(nb = ip->c_node.i_addr[20 - j]) {
+	ifnot(nb = swizzle16(ip->c_node.i_addr[20 - j])) {
 		if (rwflg || !(nb = blk_alloc(dev)))
 			return (NULLBLK);
 		ip->c_node.i_addr[20 - j] = swizzle16(nb);
@@ -968,11 +968,11 @@ void setftime(inoptr ino, int flag)
 	now = time(NULL);
 
 	if (flag & A_TIME)
-		ino->c_node.i_atime = now;
+		ino->c_node.i_atime = swizzle32(now);
 	if (flag & M_TIME)
-		ino->c_node.i_mtime = now;
+		ino->c_node.i_mtime = swizzle32(now);
 	if (flag & C_TIME)
-		ino->c_node.i_ctime = now;
+		ino->c_node.i_ctime = swizzle32(now);
 }
 
 

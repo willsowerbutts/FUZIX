@@ -1,7 +1,5 @@
 #define __UZIFS_DOT_H__
 
-#include <stdio.h>
-
 #define ROOTDEV 0
 #define ROOTINODE 1
 #define SMOUNTED 12742   /* Magic number to specify mounted filesystem */
@@ -134,7 +132,7 @@ typedef struct cinode {
 } cinode, *inoptr;
 
 typedef struct filesys {
-    int16_t       s_mounted;
+    uint16_t      s_mounted;
     uint16_t      s_isize;
     uint16_t      s_fsize;
     int16_t       s_nfree;

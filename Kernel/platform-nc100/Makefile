@@ -1,5 +1,5 @@
 
-CSRCS = devlpr.c devtty.c devrd.c
+CSRCS = devlpr.c devtty.c devrd.c devaudio.c devgfx.c
 CSRCS += devices.c main.c
 
 ASRCS = nc100.s crt0.s
@@ -23,4 +23,4 @@ clean:
 	rm -f $(OBJS) $(JUNK)  core *~ 
 
 image:
-	dd if=bootblock.cim of=../uzi.bin bs=1 seek=256 conv=notrunc
+	dd if=bootblock.cim of=../fuzix.bin bs=1 seek=256 conv=notrunc

@@ -217,7 +217,7 @@ typedef struct direct {
  */
 #define FILESYS_TABSIZE 50
 typedef struct filesys { // note: exists in mem and on disk
-    int16_t       s_mounted;
+    uint16_t       s_mounted;
     uint16_t      s_isize;
     uint16_t      s_fsize;
     uint16_t      s_nfree;
@@ -543,6 +543,15 @@ struct s_argblk {
 #define HDIO_GETGEO		0x0101
 #define HDIO_GET_IDENTITY	0x0102	/* Not yet implemented anywhere */
 #define BLKFLSBUF		0x4103	/* Use the Linux name */
+
+/*
+ *	Sound ioctls 02xx (see audio.h)
+ */
+
+
+/*
+ *	Graphics ioctls 03xx (see graphics.h)
+ */
 
 /*
  *	System info shared with user space

@@ -20,6 +20,10 @@
 ;	don't have that. Instead we keep a blockmap table in physical 1 and
 ;	128.
 ;
+;
+;	FIXME: currently if we find the block but get a bad csum we can
+;	loop effectively forever.
+;
 		.module microdrive
 
 		.globl _mdv_motor_on
@@ -31,16 +35,21 @@
 		.globl _mdv_sector
 		.globl _mdv_buf
 		.globl _mdv_hdr_buf
+		.globl _mdv_w_hdr_buf
 		.globl _mdv_len
 		.globl _mdv_page
+		.globl _mdv_csum
 
 		.globl map_process_save
 		.globl map_kernel_restore
+		.globl current_map
+		.globl switch_bank
 
 		.area _COMMONMEM
 
 SECTORID	.equ	0x01
 CSUM		.equ	0x0E
+MAP_PREAMBLE	.equ	0x0C
 
 nap_1ms:	push de
 		ld de, #87
@@ -56,18 +65,28 @@ napl:		dec de
 ;	Must preserve E
 ;
 mdv_csum_hdr:
+		ld hl, #_mdv_hdr_buf	; header buffer
+mdv_csum_hdr_2:
+		ld bc, #0x0E01		; 14 bytes
+		call mdv_csum_data
+		cp (hl)
+		ret
+mdv_csum_w_hdr:
+		ld hl, #_mdv_w_hdr_buf + MAP_PREAMBLE
+		jr mdv_csum_hdr_2
+
+mdv_csum_data:
 		xor a
-		ld b, #14
-		ld hl, #_mdv_hdr_buf
-csum_hdr:				; check the header is valid
+csum_data2:
 		add (hl)
 		adc #1
 		inc hl
-		jr z, csum_h0
+		jr z, csum_d2
 		dec a
-csum_h0:
-		djnz csum_hdr
-		cp (hl)
+csum_d2:
+		djnz csum_data2
+		dec c
+		jr nz, csum_data2
 		ret
 
 ;
@@ -155,7 +174,6 @@ mdv_hdr_only:
 		or a
 		ret
 
-
 ;
 ;	Load the next header, well probably header - you might get the
 ;	start of a data chunk, in which case try again
@@ -237,29 +255,92 @@ mdv_get_blk:	ld hl, #0x0F02		; 15 + 2 loops (data) + csum in e
 		; Sum the header block
 		call mdv_csum_hdr
 		jr nz, failblk
-
-
 		ld hl, (_mdv_buf)	; now the data
 		ld bc, #2		; 2 x 256 byte runs
-		xor a
-csum_data2:
-		add (hl)
-		adc #1
-		inc hl
-		jr z, csum_d2
-		dec a
-csum_d2:
-		djnz csum_data2
-		dec c
-		jr nz, csum_data2
-		cp e				; expected csum
-		ret z				; good block
+		call mdv_csum_data	; checksum data into a
+		cp e			; expected csum
+		ret z			; good block
 		ld a, #2
 		out (0xfe), a
-			; try again
+		; try again
 failblk:
 		ret
 
+;
+;	IRQ had must be off here...
+;
+mdv_put_blk:	ld a, #0xE6
+		out (0xEF), a			; Write mode
+		ld de, #0x0168			; Wait for record
+		call nap			; May need to be a shade
+						; longer. Compare timings
+						; with Sinclair ROM
+		ld hl, #_mdv_w_hdr_buf		; Header to write first
+		ld a, (_mdv_csum)
+		ld e, a
+		ld a, #0x03			; Magneta border
+		out (0xFE), a
+		ld a, #0xE2
+		out (0xEF), a			; Ready...
+		nop				; FIXME: use a shorter
+		nop				; way to wait 24 clocks
+		nop
+		nop
+		nop
+		nop
+		ld c, #0xE7			; Data port
+		ld b, #0x1B			; Header
+		otir				; Header bytes out
+		ld hl, (_mdv_buf)
+		otir				; First 256 data
+		otir				; Last 256 data
+		out (c), e			; and the checksum
+		ld a, #0xE6
+		out (0xEF), a
+		xor a
+		out (0xFE), a			; Back in black
+		ld a, #0xEE
+		out (0xEF), a			; Writing off
+		xor a
+		ret
+
+;
+;	Template for writes
+buftmplt:
+		.db 0, 0, 0, 0
+		.db 0, 0, 0, 0
+		.db 0, 0, 0xff, 0xff		; preamble
+		.db 0				; block not header
+		.db 0				; sector
+		.db 0				; length low
+		.db 2				; length high
+		.ascii "FUZIX     "		; filler basically
+;
+;	Write a sector from memory
+;
+mdv_store:	ld hl, (_mdv_buf)
+		ld bc, #2			; 512 bytes
+		call mdv_csum_data		; checksum into A
+		ld (_mdv_csum), a		; save ready to write
+		;
+		; Now fill in the header on the data bloc
+		;
+		ld hl, #buftmplt
+		ld de, #_mdv_w_hdr_buf
+		ld bc, #14+MAP_PREAMBLE
+		ldir
+		ld a, (_mdv_sector)		; fill in the sector
+		ld (_mdv_w_hdr_buf + MAP_PREAMBLE + 1), a
+		call mdv_csum_w_hdr		; checksum
+		ld (hl), a			; fill in the checksum
+		in a, (0xef)
+		and #1
+		jr z, mdv_put_wp		; write protected
+		call mdv_find_hdr		; find the header we want
+		call z, mdv_put_blk		; write the block after it
+		ret				; done
+mdv_put_wp:	ld a, #4			; write protected - fail
+		ret
 ;
 ;	Load a sector into memory.
 ;
@@ -292,38 +373,41 @@ mdv_motor_a:
 ;
 ;	Now we will do 8 cycles of bit banging clock and data
 ;
-mdv_motor_lp:	ld a, #0xEF			; clock it
-		out (0xef), a			; select the microdrive sel
-						; line
-		dec e				; are we there yet
+mdv_motor_lp:
+		dec e				; are we there yet ?
 		jr nz, mdv_motor_0		; send zero
 ;
 ;	Clock out an "on" bit
 ;
 		ld a,#1
-		out (0xF7), a
+		out (0xF7), a			; data high
 		ld a, #0xee
-		out (c), a			
-		call nap_1ms
-		ld a, #0xec
-		jr mdv_motor_1
+		out (c), a			; clock, !data
+		call nap_1ms			; wait 1mS
+		ld a, #0xec			; !clock !data
+		jr mdv_motor_1			; into common path
 ;
 ;	Clock out an "off" bit
 ;
 mdv_motor_0:
-		xor a
-		out (0xEF), a
+		ld a, c				; 0xEF
+		out (0xEF), a			; clock 1
+		xor a				; 0 to data
+		out (0xF7), a
 		call nap_1ms			; 1ms pulse 0
-		ld a, #0xED
+		ld a, #0xED			; clock 0
 
 mdv_motor_1:	out (c), a
-		call nap_1ms
-		djnz mdv_motor_lp
+		call nap_1ms			; 1ms wait
+		djnz mdv_motor_lp		; round we go
+		ld a, #0x01
+		out (0xF7), a			; 1 to data
+		ld a, #0xEE			; clock high, !data
+		out (0xEF), a			; done
 
 ;
 ;	"Spin" up the drive - in our case get the tape to drive speed
 ;
-mdv_spin_up:
 		ld bc, #13000
 		jp nap
 
@@ -345,10 +429,11 @@ ret0:
 ;
 _mdv_motor_on:	pop de
 		pop hl
-		pop af
-		push af
+		pop bc
+		push bc
 		push hl
 		push de
+		ld a, c
 		call mdv_motor
 		jr ret0
 ;
@@ -359,23 +444,31 @@ _mdv_motor_on:	pop de
 ;	ZX128. It will break if this ceases to be true.
 ;
 _mdv_bread:
+		ld de, (current_map)		; Current map into e
 		ld a, (_mdv_page)
 		or a
+		ld a, e				; Save old map
 		push af
-		call nz, map_process_save
-		call mdv_fetch
-		jr nz, poprete
+		call nz, switch_bank		; Switch if mdv_page set
+		call mdv_fetch			; Do the I/O
+mdv_bout:
+		jr nz, poprete			; Error codes for C
 		xor a
 poprete:
 		ld l, a
 		xor a
 		ld h, a
 		pop af
-		call nz, map_kernel_restore
+		call nz, switch_bank		; Switch bank if needed
 		ret
 
 _mdv_bwrite:
-		ld hl, #0xffff		; not done yet
-		ret
-
+		ld de, (current_map)
+		ld a, (_mdv_page)
+		or a
+		ld a, e
+		push af
+		call nz, switch_bank
+		call mdv_store
+		jr mdv_bout
 
