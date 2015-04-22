@@ -17,11 +17,13 @@ was_ei:		push af
 		ret
 
 _irqrestore:	pop hl
+		pop de
 		pop af
 		jr c, was_di
 		ei
 		jr irqres_out
 was_di:		di
 irqres_out:	push af
+		push de
 		jp (hl)
 

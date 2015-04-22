@@ -14,7 +14,8 @@
         .globl _inint
         .globl _switchout
         .globl _switchin
-        .globl _doexec
+	.globl _low_bank
+	.globl _dup_low_page
         .globl _dofork
         .globl _runticks
         .globl unix_syscall_entry
@@ -94,8 +95,6 @@ _switchout:
 
 badswitchmsg: .ascii "_switchin: FAIL"
             .db 13, 10, 0
-swapped: .ascii "_switchin: SWAPPED"
-            .db 13, 10, 0
 
 ;
 ;	FIXME: update this to use both pages and do the needed exchange
@@ -117,42 +116,45 @@ _switchin:
 
         ld hl, #P_TAB__P_PAGE_OFFSET
 	add hl, de	; process ptr
-
-	; We are in DI so we can poke these directly but must not invoke
-	; any code outside of common
-
+	;
+	;	Get ourselves a valid private stack ASAP. We are going to
+	;	copy udata around and our main stacks are in udata
+	;
 	ld sp, #_swapstack
 
-        ld a, (hl)
+        ld a, (hl)	; 0 swapped, not zero is the bank for C000
 	or a
 	jr nz, not_swapped
 
 	; Swap the process in (this may swap something else out first)
+	; The second pushes are C function arguments. SDCC can trample
+	; these
 
-	push hl
+	push hl		; Save
+	push de
+	push hl		; Arguments
 	push de
 	push af
 	call _swapper
 	pop af
-	pop de
+	pop af
+	pop af
+	pop de		; Restore
 	pop hl
-	ld a, (hl)
+	ld a, (hl)	; We should now have a page assigned
 not_swapped:
-	or #0x18
-
-
+	; We are in DI so we can poke these directly but must not invoke
+	; any code outside of common
+	or #0x18	; ROM
 	; Pages please !
 	ld bc, #0x7ffd
 	out (c), a
 
 	;	Copy the stash from the user page back down into common
-	;	At this point we've just overwritten the live stack, and need
-	;	to avoid using our stack until we've restored SP or we
-	;	may crap on existing stack contents with unfortunate
-	;	results
-	;
 	;	The alternate registers are free - we use them for the
 	;	block copy and for the flipper
+	;
+	;	FIXME: Add Tormod's optimisation from the 6809 tree
 	;
 	exx
 	ld hl, #U_DATA_STASH
@@ -171,16 +173,16 @@ not_swapped:
 	out (c), a
         
 	;	Is our low data in 0x8000 already or do we need to flip
-	;	it with bank 6. low_bank holds the page pointer of the
+	;	it with bank 6. _low_bank holds the page pointer of the
 	;	task owning the space
 
-	ld hl, (low_bank)	; who owns low memory
+	ld hl, (_low_bank)	; who owns low memory
 	or a
-	sbc hl, de
-	jr z, nofliplow	; not us - need to fix that up. Preserves DE
+	sbc hl, de		; preserve DE
+	jr z, nofliplow		; skip the flip if we own low bank
 ;
 ;	Flip low banks over. Interrupts must be off as the low banks don't
-;	have the IM2 vectors
+;	have the IM2 vectors. Preserve DE
 ;
 fliplow:
 	exx
@@ -190,7 +192,7 @@ fliplow:
 	ld bc, #0x7ffd
 	out (c), a
 flip2:
-	ld b, #0		; 16K in 256 bytes
+	ld b, #0		; 256 bytes per outer loop (16K total)
 flip1:
 	ld c, (hl)
 	ld a, (de)
@@ -209,7 +211,7 @@ flip1:
 	ld bc, #0x7ffd
 	out (c), a
 	exx
-	ld (low_bank), de	; we own it now
+	ld (_low_bank), de	; we own it now
 
 nofliplow:
 
@@ -224,7 +226,7 @@ nofliplow:
         ; next_process->p_status = P_RUNNING
         ld P_TAB__P_STATUS_OFFSET(ix), #P_RUNNING
 
-	; Fix the moved page pointers
+	; Fix any moved page pointers
 	; Just do one byte as that is all we use on this platform
 	ld a, P_TAB__P_PAGE_OFFSET(ix)
 	ld (U_DATA__U_PAGE), a
@@ -257,6 +259,23 @@ switchinfail:
         call outstring
 	; something went wrong and we didn't switch in what we asked for
         jp _trap_monitor
+
+; Interrupts should be off when this is called
+_dup_low_page:
+	ld a, #0x06 + 0x18		;	low page alternate
+	ld bc, #0x7ffd
+	out (c), a
+
+	ld hl, #0x8000			; 	Fixed
+	ld de, #0xC000			;	Page we just mapped in
+	ld bc, #16384
+	ldir
+
+	ld a, (current_map)		; 	restore mapping
+	or #0x18			; ROM bits
+	ld bc, #0x7ffd
+	out (c), a
+	ret
 
 fork_proc_ptr: .dw 0 ; (C type is struct p_tab *) -- address of child process p_tab entry
 
@@ -307,7 +326,7 @@ _dofork:
         ; --------- copy process ---------
 
         ld hl, (fork_proc_ptr)
-	ld (low_bank), hl		;	low bank will become the child
+	ld (_low_bank), hl		;	low bank will become the child
         ld de, #P_TAB__P_PAGE_OFFSET	;	bank number
         add hl, de
         ; load p_page
@@ -434,6 +453,6 @@ bouncebuffer:
 ;	a true common so it's even easier. We never use both at once
 ;	so share with bouncebuffer
 _swapstack:
-low_bank:
+_low_bank:
 	.dw _ptab			; Init starts owning this
 
