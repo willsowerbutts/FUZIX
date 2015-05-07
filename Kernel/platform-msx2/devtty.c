@@ -93,11 +93,12 @@ static void keyproc(void)
 						keysdown--;
 				}
 				if ((key & m) && !(keymap[i] & m)) {
-					if (!(shiftmask[i] & m))
+					if (!(shiftmask[i] & m)) {
 						keysdown++;
-					keybyte = i;
-					keybit = n;
-					newkey = 1;
+						newkey = 1;
+						keybyte = i;
+						keybit = n;
+					}
 				}
 				m += m;
 			}
@@ -123,7 +124,7 @@ static void keydecode(void)
 		c = keyboard[keybyte][keybit];
 
 	if (keymap[6] & 2) {	/* control */
-		if (c > 31 && c < 96)
+		if (c > 31 && c < 127)
 			c &= 31;
 	}
 

@@ -180,11 +180,12 @@ static void keyproc(void)
 						keysdown--;
 				}
 				if ((key & m) && !(keymap[i] & m)) {
-					if (!(shiftmask[i] & m))
+					if (!(shiftmask[i] & m)) {
 						keysdown++;
-					keybyte = i;
-					keybit = n;
-					newkey = 1;
+						newkey = 1;
+						keybyte = i;
+						keybit = n;
+					}
 				}
 				m >>= 1;
 			}
@@ -240,7 +241,7 @@ static void keydecode(void)
 	else
 		c = keyboard[keybyte][7-keybit];
 	if (keymap[10] & 0x80) {	/* alt */
-		if (c > 31 && c < 96)
+		if (c > 31 && c < 127)
 			c &= 31;
 	}
 	if (capslock && c >= 'a' && c <= 'z')
