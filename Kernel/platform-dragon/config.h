@@ -21,6 +21,9 @@
 #define SWAPTOP	    0x8000	/* uarea so its a round number of sectors */
 #define MAX_SWAPS	32
 
+/* Until the Becker and floppy driver support raw I/O */
+#define CONFIG_LEGACY_EXEC
+
 /* Video terminal, not a serial tty */
 #define CONFIG_VT
 /* Simple text mode */
@@ -35,6 +38,9 @@
 
 extern unsigned char vt_mangle_6847(unsigned char c);
 #define VT_MAP_CHAR(x)	vt_mangle_6847(x)
+
+/* RS/Tandy Color Computer keyboard */
+#undef CONFIG_COCO_KBD
 
 #define TICKSPERSEC 50   /* Ticks per second */
 /* FIXME: This will move once we put the display in the kernel bank and
@@ -57,3 +63,5 @@ extern unsigned char vt_mangle_6847(unsigned char c);
 #define TTYDEV   BOOT_TTY /* Device used by kernel for messages, panics */
 #define NBUFS    6       /* Number of block buffers */
 #define NMOUNTS	 2	  /* Number of mounts at a time */
+
+#define swap_map(x)	((uint8_t *)(x))
