@@ -1,0 +1,59 @@
+#!/bin/bash
+
+ROOTDIR=/home/btg/projects/fuzix
+DATECODE=$1
+
+if [ "x${DATECODE}" == "x" ]; then
+    DATECODE=$(/bin/date +%Y-%m-%d)
+fi
+
+echo "Building distribution $DATECODE"
+DISTREL=fuzix-${DATECODE}
+DISTRIBUTION=${ROOTDIR}/Standalone/distribution/${DISTREL}
+
+if [ -a ${DISTRIBUTION} ]; then
+    echo "Refusing to continue; ${DISTRIBUTION} already exists."
+    echo "Specify a new distribution suffix on the command line."
+    exit 1
+fi
+
+mkdir ${DISTRIBUTION}
+cp $ROOTDIR/Standalone/distribution/README.txt ${DISTRIBUTION}/
+
+# we build our disk image in multiple sections which we later combine -- this
+# prevents us needing to use real partitions which would require root.
+
+# prepare the partition table
+dd if=/dev/zero bs=512 count=2048 of=${DISTRIBUTION}/fs-boot-track
+(echo "2048,65536,5a"; echo "67584,133120,32") | /sbin/sfdisk -u S --force ${DISTRIBUTION}/fs-boot-track > /dev/null 2>&1
+
+# prepare the Fuzix filesystem (max possible size)
+dd if=/dev/zero bs=512 count=65536 of=${DISTRIBUTION}/fs-fuzix
+( cd $ROOTDIR/Standalone/filesystem-src; ./build-filesystem ${DISTRIBUTION}/fs-fuzix 256 65535 )
+
+# prepare a blank set of 8 CP/M slices (0x4100 sectors each)
+./write-e5 ${DISTRIBUTION}/fs-cpm 133120 
+
+zip -9 ${DISTREL}.zip ${DISTREL}/README.txt
+
+# prepare the kernel for each platform
+for TARGET in n8vem-mark4 zeta-v2; do
+    echo "Building kernel for target ${TARGET}"
+    ( cd $ROOTDIR/Kernel; make TARGET=${TARGET} clean; make TARGET=${TARGET} -j4 )
+
+    # platform boot track
+    cp ${DISTRIBUTION}/fs-boot-track ${DISTRIBUTION}/fs-boot-track-${TARGET}
+    dd if=$ROOTDIR/Kernel/platform-${TARGET}/diskboot.bin bs=446 count=1 conv=notrunc of=${DISTRIBUTION}/fs-boot-track-${TARGET}
+    dd if=$ROOTDIR/Kernel/fuzix.bin bs=512 seek=2 conv=notrunc of=${DISTRIBUTION}/fs-boot-track-${TARGET}
+
+    # platform CP/M FS
+    cp ${DISTRIBUTION}/fs-cpm ${DISTRIBUTION}/fs-cpm-${TARGET}
+    cpmcp -f n8vem_hd0 ${DISTRIBUTION}/fs-cpm-${TARGET} $ROOTDIR/Kernel/platform-${TARGET}/fuzix.com 0:
+
+    # assemble the platform disk image
+    cat ${DISTRIBUTION}/fs-boot-track-${TARGET} ${DISTRIBUTION}/fs-fuzix ${DISTRIBUTION}/fs-cpm-${TARGET} > ${DISTRIBUTION}/disk-${TARGET}.bin
+
+    zip -9 ${DISTREL}.zip ${DISTREL}/disk-${TARGET}.bin
+done
+
+echo "Built distribution in ${DISTREL}.zip"
