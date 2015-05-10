@@ -6,13 +6,18 @@ if [ "$1" = "-X" ]; then
 	endian=-X
 fi
 if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
-        echo "Syntax: $0 filename isize bsize"
+        echo "Syntax: $0 filename isize bsize [ucp-script]"
         echo ""
         echo "For a 1.44MB floppy disk, use isize=64, bsize=2880"
         echo "For a 32MB (or larger) hard disk, use isize=256, bsize=65535"
         exit 1
 fi
 
+SCRIPT=$4
+if [ -z "$SCRIPT" ]; then
+    SCRIPT=ucp-script.txt
+fi
+
 ../mkfs $endian $1 $2 $3
-../ucp $1 < ucp-script.txt
+../ucp $1 < $SCRIPT
 ../fsck $1
