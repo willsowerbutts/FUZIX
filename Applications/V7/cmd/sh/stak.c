@@ -12,73 +12,69 @@
 
 #include	"defs.h"
 
-STKPTR		stakbot=nullstr;
+STKPTR stakbot = (void *)nullstr;
 
 
 
 /* ========	storage allocation	======== */
 
-STKPTR	getstak(asize)
-	INT		asize;
-{	/* allocate requested stack */
-	REG STKPTR	oldstak;
-	REG INT		size;
+STKPTR getstak(int asize)
+{				/* allocate requested stack */
+	register STKPTR oldstak;
+	register int size;
 
-	size=round(asize,BYTESPERWORD);
-	oldstak=stakbot;
+	size = round(asize, BYTESPERWORD);
+	oldstak = stakbot;
 	staktop = stakbot += size;
-	return(oldstak);
+	return oldstak;
 }
 
-STKPTR	locstak()
-{	/* set up stack for local use
-	 * should be followed by `endstak'
-	 */
-	IF brkend-stakbot<BRKINCR
-	THEN	setbrk(brkincr);
-		IF brkincr < BRKMAX
-		THEN	brkincr += 256;
-		FI
-	FI
-	return(stakbot);
+STKPTR locstak(void)
+{				/* set up stack for local use
+				 * should be followed by `endstak'
+				 */
+	if (brkend - stakbot < BRKINCR) {
+		setbrk(brkincr);
+		if (brkincr < BRKMAX)
+			brkincr += 256;
+	}
+	return stakbot;
 }
 
-STKPTR	savstak()
+STKPTR savstak(void)
 {
-	assert(staktop==stakbot);
-	return(stakbot);
+        /* FIXME: check assert doesn't suck in stdio */
+	assert(staktop == stakbot);
+	return stakbot;
 }
 
-STKPTR	endstak(argp)
-	REG STRING	argp;
-{	/* tidy up after `locstak' */
-	REG STKPTR	oldstak;
-	*argp++=0;
-	oldstak=stakbot; stakbot=staktop=(STKPTR)round(argp,BYTESPERWORD);
-	return(oldstak);
+STKPTR endstak(register char *argp)
+{				/* tidy up after `locstak' */
+	register char *oldstak;
+	*argp++ = 0;
+	oldstak = stakbot;
+	stakbot = staktop = (char *) round(argp, BYTESPERWORD);
+	return oldstak;
 }
 
-void	tdystak(x)
-	REG STKPTR 	x;
+void tdystak(register char *x)
 {
 	/* try to bring stack back to x */
-	WHILE ADR(stakbsy)>ADR(x)
-	DO free(stakbsy);
-	   stakbsy = stakbsy->word;
-	OD
-	staktop=stakbot=max(ADR(x),ADR(stakbas));
-	rmtemp(x);
+	while (ADR(stakbsy) > ADR(x)) {
+		sh_free(stakbsy);
+		stakbsy = stakbsy->word;
+	}
+	staktop = stakbot = max(ADR(x), ADR(stakbas));
+	rmtemp((void *)x);	/* FIXME */
 }
 
-stakchk()
+void stakchk(void)
 {
-	IF (brkend-stakbas)>BRKINCR+BRKINCR
-	THEN	setbrk(-BRKINCR);
-	FI
+	if ((brkend - stakbas) > BRKINCR + BRKINCR)
+		setbrk(-BRKINCR);
 }
 
-STKPTR	cpystak(x)
-	STKPTR		x;
+char *cpystak(const char *x)
 {
-	return(endstak(movstr(x,locstak())));
+	return endstak(movstr(x, locstak()));
 }

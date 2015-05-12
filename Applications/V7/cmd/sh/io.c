@@ -15,121 +15,131 @@
 
 /* ========	input output and file copying ======== */
 
-initf(fd)
-	UFD		fd;
+void initf(UFD fd)
 {
-	REG FILE	f=standin;
+	register FILE f = standin;
 
-	f->fdes=fd; f->fsiz=((flags&(oneflg|ttyflg))==0 ? BUFSIZ : 1);
-	f->fnxt=f->fend=f->fbuf; f->feval=0; f->flin=1;
-	f->feof=FALSE;
+	f->fdes = fd;
+	f->fsiz = ((flags & (oneflg | ttyflg)) == 0 ? BUFSIZ : 1);
+	f->fnxt = f->fend = f->fbuf;
+	f->feval = 0;
+	f->flin = 1;
+	f->feof = FALSE;
 }
 
-estabf(s)
-	REG STRING	s;
+int estabf(register const char *s)
 {
-	REG FILE	f;
+	register FILE f;
 
-	(f=standin)->fdes = -1;
-	f->fend=length(s)+(f->fnxt=s);
-	f->flin=1;
-	return(f->feof=(s==0));
+	(f = standin)->fdes = -1;
+	f->fend = length(s) + (f->fnxt = (char *)s);/*FIXME review */
+	f->flin = 1;
+	return (f->feof = (s == 0));
 }
 
-push(af)
-	FILE		af;
+void push(FILE af)
 {
-	REG FILE	f;
+	register FILE f;
 
-	(f=af)->fstak=standin;
-	f->feof=0; f->feval=0;
-	standin=f;
+	(f = af)->fstak = standin;
+	f->feof = 0;
+	f->feval = 0;
+	standin = f;
 }
 
-pop()
+int pop(void)
 {
-	REG FILE	f;
+	register FILE f;
 
-	IF (f=standin)->fstak
-	THEN	IF f->fdes>=0 THEN close(f->fdes) FI
-		standin=f->fstak;
-		return(TRUE);
-	ELSE	return(FALSE);
-	FI
+	if ((f = standin)->fstak) {
+		if (f->fdes >= 0)
+			close(f->fdes);
+		standin = f->fstak;
+		return (TRUE);
+	} else
+		return (FALSE);
 }
 
-chkpipe(pv)
-	INT		*pv;
+void chkpipe(int *pv)
 {
-	IF pipe(pv)<0 ORF pv[INPIPE]<0 ORF pv[OTPIPE]<0
-	THEN	error(piperr);
-	FI
+	if (pipe(pv) < 0 || pv[INPIPE] < 0 || pv[OTPIPE] < 0)
+		error(piperr);
 }
 
-chkopen(idf)
-	STRING		idf;
+int chkopen(const char *idf)
 {
-	REG INT		rc;
+	register int rc;
 
-	IF (rc=open(idf,0))<0
-	THEN	failed(idf,badopen);
-	ELSE	return(rc);
-	FI
+	if ((rc = open(idf, 0)) < 0)
+		failed(idf, badopen);
+	else
+		return rc;
 }
 
-sh_rename(f1,f2)
-	REG INT		f1, f2;
+void sh_rename(register int f1, register int f2)
 {
-	IF f1!=f2
-	THEN	dup2(f1, f2);
+	if (f1 != f2) {
+		dup2(f1, f2);
 		close(f1);
-		IF f2==0 THEN ioset|=1 FI
-	FI
+		if (f2 == 0)
+			ioset |= 1;
+	}
 }
 
-create(s)
-	STRING		s;
+int create(const char *s)
 {
-	REG INT		rc;
+	register int rc;
 
-	IF (rc=creat(s,0666))<0
-	THEN	failed(s,badcreate);
-	ELSE	return(rc);
-	FI
+	if ((rc = creat(s, 0666)) < 0)
+		failed(s, badcreate);
+	else
+		return rc;
 }
 
-tmpfil()
+int tmpfil(void)
 {
-	itos(serial++); movstr(numbuf,tmpnam);
-	return(create(tmpout));
+	itos(serial++);
+	movstr(numbuf, tmpnam);
+	return create(tmpout);
 }
 
 /* set by trim */
-BOOL		nosubst;
+BOOL nosubst;
 
-copy(ioparg)
-	IOPTR		ioparg;
+void copy(IOPTR ioparg)
 {
-	CHAR		c, *ends;
-	REG CHAR	*cline, *clinep;
-	INT		fd;
-	REG IOPTR	iop;
+	CHAR c, *ends;
+	register CHAR *cline, *clinep;
+	int fd;
+	register IOPTR iop;
 
-	IF iop=ioparg
-	THEN	copy(iop->iolst);
-		ends=mactrim(iop->ioname); IF nosubst THEN iop->iofile &= ~IODOC FI
-		fd=tmpfil();
-		iop->ioname=cpystak(tmpout);
-		iop->iolst=iotemp; iotemp=iop;
-		cline=locstak();
+	if (iop = ioparg) {
+		copy(iop->iolst);
+		ends = mactrim(iop->ioname);
 
-		LOOP	clinep=cline; chkpr(NL);
-			WHILE (c = (nosubst ? readc() :  nextc(*ends)),  !eolchar(c)) DO *clinep++ = c OD
-			*clinep=0;
-			IF eof ORF eq(cline,ends) THEN break FI
-			*clinep++=NL;
-			write(fd,cline,clinep-cline);
-		POOL
+		if (nosubst)
+			iop->iofile &= ~IODOC;
+
+		fd = tmpfil();
+		iop->ioname = cpystak(tmpout);
+		iop->iolst = iotemp;
+		iotemp = iop;
+		cline = locstak();
+
+		for (;;) {
+			clinep = cline;
+			chkpr(NL);
+			while ((c = (nosubst ? readc() : nextc(*ends)),!eolchar(c))) {
+				*clinep++ = c;
+			}
+			*clinep = 0;
+
+			if (eof || eq(cline, ends))
+				break;
+
+			*clinep++ = NL;
+			write(fd, cline, clinep - cline);
+		}
 		close(fd);
-	FI
+	}
 }

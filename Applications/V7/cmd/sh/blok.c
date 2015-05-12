@@ -21,93 +21,117 @@
 #define BUSY 01
 #define busy(x)	(Rcheat((x)->word)&BUSY)
 
-POS		brkincr=BRKINCR;
-BLKPTR		blokp;			/*current search pointer*/
-BLKPTR		bloktop=BLK(end);	/*top of arena (last blok)*/
+POS brkincr = BRKINCR;
+BLKPTR blokp;			/*current search pointer */
+BLKPTR bloktop = BLK(end);	/*top of arena (last blok) */
 
 
 
-ADDRESS	alloc(nbytes)
-	POS		nbytes;
+ADDRESS alloc(POS nbytes)
 {
-	REG POS		rbytes = round(nbytes+BYTESPERWORD,BYTESPERWORD);
+	register POS rbytes = round(nbytes + BYTESPERWORD, BYTESPERWORD);
 
-	LOOP	INT		c=0;
-		REG BLKPTR	p = blokp;
-		REG BLKPTR	q;
-		REP	IF !busy(p)
-			THEN	WHILE !busy(q = p->word) DO p->word = q->word OD
-				IF ADR(q)-ADR(p) >= rbytes
-				THEN	blokp = BLK(ADR(p)+rbytes);
-					IF q > blokp
-					THEN	blokp->word = p->word;
-					FI
-					p->word=BLK(Rcheat(blokp)|BUSY);
-					return(ADR(p+1));
-				FI
-			FI
-			q = p; p = BLK(Rcheat(p->word)&~BUSY);
-		PER	p>q ORF (c++)==0 DONE
+	for (;;) {
+		int c = 0;
+		register BLKPTR p = blokp;
+		register BLKPTR q;
+		do {
+			if (!busy(p)
+			    ) {
+				while (!busy(q = p->word)) {
+					p->word = q->word;
+				}
+				if (ADR(q) - ADR(p) >= rbytes) {
+					blokp = BLK(ADR(p) + rbytes);
+					if (q > blokp) {
+						blokp->word = p->word;
+						;
+					}
+					p->word =
+					    BLK(Rcheat(blokp) | BUSY);
+					return (ADR(p + 1));
+					;
+				};
+			}
+			q = p;
+			p = BLK(Rcheat(p->word) & ~BUSY);
+		} while (p > q || (c++) == 0);
 		addblok(rbytes);
-	POOL
+	}
 }
 
-void	addblok(reqd)
-	POS		reqd;
+void addblok(POS reqd)
 {
-	IF stakbas!=staktop
-	THEN	REG STKPTR	rndstak;
-		REG BLKPTR	blokstak;
+	if (stakbas != staktop) {
+		register STKPTR rndstak;
+		register BLKPTR blokstak;
 
 		pushstak(0);
-		rndstak=(STKPTR)round(staktop,BYTESPERWORD);
-		blokstak=BLK(stakbas)-1;
-		blokstak->word=stakbsy; stakbsy=blokstak;
-		bloktop->word=BLK(Rcheat(rndstak)|BUSY);
-		bloktop=BLK(rndstak);
-	FI
-	reqd += brkincr; reqd &= ~(brkincr-1);
-	blokp=bloktop;
-	bloktop=bloktop->word=BLK(Rcheat(bloktop)+reqd);
-	bloktop->word=BLK(ADR(end)+1);
-	BEGIN
-	   REG STKPTR stakadr=STK(bloktop+2);
-	   staktop=movstr(stakbot,stakadr);
-	   stakbas=stakbot=stakadr;
-	END
+		rndstak = (STKPTR) round(staktop, BYTESPERWORD);
+		blokstak = BLK(stakbas) - 1;
+		blokstak->word = stakbsy;
+		stakbsy = blokstak;
+		bloktop->word = BLK(Rcheat(rndstak) | BUSY);
+		bloktop = BLK(rndstak);
+		;
+	}
+	reqd += brkincr;
+	reqd &= ~(brkincr - 1);
+	blokp = bloktop;
+	bloktop = bloktop->word = BLK(Rcheat(bloktop) + reqd);
+	bloktop->word = BLK(ADR(end) + 1);
+	{
+		register STKPTR stakadr = STK(bloktop + 2);
+		staktop = movstr(stakbot, stakadr);
+		stakbas = stakbot = stakadr;
+	}
 }
 
-void free(void *ap)
+void sh_free(void *ap)
 {
 	BLKPTR p;
 
-	IF (p=ap) ANDF p<bloktop
-	THEN	Lcheat((--p)->word) &= ~BUSY;
-	FI
+	if ((p = ap) && p < bloktop)
+		Lcheat((--p)->word) &= ~BUSY;
 }
 
 #ifdef DEBUG
-chkbptr(ptr)
-	BLKPTR	ptr;
+chkbptr(BLKPTR ptr)
 {
-	INT		exf=0;
-	REG BLKPTR	p = end;
-	REG BLKPTR	q;
-	INT		us=0, un=0;
+	int exf = 0;
+	register BLKPTR p = end;
+	register BLKPTR q;
+	int us = 0, un = 0;
 
-	LOOP
-	   q = Rcheat(p->word)&~BUSY;
-	   IF p==ptr THEN exf++ FI
-	   IF q<end ORF q>bloktop THEN abort(3) FI
-	   IF p==bloktop THEN break FI
-	   IF busy(p)
-	   THEN us += q-p;
-	   ELSE un += q-p;
-	   FI
-	   IF p>=q THEN abort(4) FI
-	   p=q;
-	POOL
-	IF exf==0 THEN abort(1) FI
-	prn(un); prc(SP); prn(us); prc(NL);
+	for (;;) {
+		q = Rcheat(p->word) & ~BUSY;
+		if (p == ptr) {
+			exf++;
+		}
+		if (q < end || q > bloktop) {
+			abort(3);
+		}
+		if (p == bloktop) {
+			break;
+		}
+		if (busy(p)
+		    ) {
+			us += q - p;
+		} else {
+			un += q - p;
+			;
+		}
+		if (p >= q) {
+			abort(4);
+		}
+		p = q;
+	}
+	if (exf == 0) {
+		abort(1);
+	}
+	prn(un);
+	prc(SP);
+	prn(us);
+	prc(NL);
 }
 #endif

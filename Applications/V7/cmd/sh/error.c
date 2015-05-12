@@ -14,40 +14,40 @@
 
 /* ========	error handling	======== */
 
-exitset()
+void exitset(void)
 {
-	assnum(&exitadr,exitval);
+	assnum(&exitadr, exitval);
 }
 
-sigchk()
+void sigchk(void)
 {
 	/* Find out if it is time to go away.
 	 * `trapnote' is set to SIGSET when fault is seen and
 	 * no trap has been set.
 	 */
-	IF trapnote&SIGSET
-	THEN	exitsh(SIGFAIL);
-	FI
+	if (trapnote & SIGSET)
+		exitsh(SIGFAIL);
 }
 
-failed(s1,s2)
-	STRING	s1, s2;
+void failed(const char *s1, const char *s2)
 {
-	prp(); prs(s1); 
-	IF s2
-	THEN	prs(colon); prs(s2);
-	FI
-	newline(); exitsh(ERROR);
+	prp();
+	prs(s1);
+	if (s2) {
+		prs(colon);
+		prs(s2);
+		;
+	}
+	newline();
+	exitsh(ERROR);
 }
 
-error(s)
-	STRING	s;
+void error(const char *s)
 {
-	failed(s,NIL);
+	failed(s, NIL);
 }
 
-exitsh(xno)
-	INT	xno;
+void exitsh(int xno)
 {
 	/* Arrive here from `FATAL' errors
 	 *  a) exit command,
@@ -56,30 +56,33 @@ exitsh(xno)
 	 *
 	 * Action is to return to command level or exit.
 	 */
-	exitval=xno;
-	IF (flags & (forked|errflg|ttyflg)) != ttyflg
-	THEN	done();
-	ELSE	clearup();
-		longjmp(errshell,1);
-	FI
+	exitval = xno;
+	if ((flags & (forked | errflg | ttyflg)) != ttyflg) {
+		done();
+	} else {
+		clearup();
+		longjmp(errshell, 1);
+		;
+	}
 }
 
-done()
+void done(void)
 {
-	REG STRING	t;
-	IF t=trapcom[0]
-	THEN	trapcom[0]=0; /*should free but not long */
-		execexp(t,0);
-	FI
+	register STRING t;
+	if (t = trapcom[0]
+	    ) {
+		trapcom[0] = 0;	/*should free but not long */
+		execexp(t, 0);
+		;
+	}
 	rmtemp(0);
 	exit(exitval);
 }
 
-rmtemp(base)
-	IOPTR		base;
+void rmtemp(IOPTR base)
 {
-	WHILE iotemp>base
-	DO  unlink(iotemp->ioname);
-	    iotemp=iotemp->iolst;
-	OD
+	while (iotemp > base) {
+		unlink(iotemp->ioname);
+		iotemp = iotemp->iolst;
+	}
 }

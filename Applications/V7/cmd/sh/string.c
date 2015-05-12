@@ -15,43 +15,42 @@
 /* ========	general purpose string handling ======== */
 
 
-STRING	movstr(a,b)
-	REG STRING	a, b;
+char *movstr(register const char *a, register char *b)
 {
-	WHILE *b++ = *a++ DONE
-	return(--b);
+	while (*b++ = *a++);
+	return (--b);
 }
 
-INT	any(c,s)
-	REG CHAR	c;
-	STRING		s;
+int any(char c, const char *s)
 {
-	REG CHAR d;
+	register char d;
 
-	WHILE d = *s++
-	DO	IF d==c
-		THEN	return(TRUE);
-		FI
-	OD
-	return(FALSE);
+	while (d = *s++) {
+		if (d == c) {
+			return (TRUE);
+			;
+		};
+	}
+	return (FALSE);
 }
 
-INT	cf(s1, s2)
-	REG STRING s1, s2;
+int cf(register const char *s1, register const char *s2)
 {
-	WHILE *s1++ == *s2
-	DO	IF *s2++==0
-		THEN	return(0);
-		FI
-	OD
-	return(*--s1 - *s2);
+	while (*s1++ == *s2) {
+		if (*s2++ == 0) {
+			return (0);
+			;
+		};
+	}
+	return (*--s1 - *s2);
 }
 
-INT	length(as)
-	STRING as;
+int length(const char *as)
 {
-	REG STRING s;
+	register const char *s;
 
-	IF s=as THEN WHILE *s++ DONE FI
-	return(s-as);
+	if (s = as) {
+		while (*s++);;
+	}
+	return (s - as);
 }

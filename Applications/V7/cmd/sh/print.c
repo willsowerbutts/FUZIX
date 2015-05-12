@@ -11,89 +11,104 @@
 
 #include	"defs.h"
 
-CHAR		numbuf[6];
+CHAR numbuf[6];
 
 
 /* printing and io conversion */
 
-newline()
-{	prc(NL);
-}
-
-blank()
-{	prc(SP);
-}
-
-prp()
+void newline(void)
 {
-	IF (flags&prompt)==0 ANDF cmdadr
-	THEN	prs(cmdadr); prs(colon);
-	FI
+	prc(NL);
 }
 
-void	prs(as)
-	STRING		as;
+void blank(void)
 {
-	REG STRING	s;
-
-	IF s=as
-	THEN	write(output,s,length(s)-1);
-	FI
+	prc(SP);
 }
 
-void	prc(c)
-	CHAR		c;
+void prp(void)
 {
-	IF c
-	THEN	write(output,&c,1);
-	FI
+	if ((flags & prompt) == 0 && cmdadr) {
+		prs(cmdadr);
+		prs(colon);
+	}
 }
 
-prt(t)
-	L_INT		t;
+void prs(const char *as)
 {
-	REG INT	hr, min, sec;
+	register const char *s;
 
-	t += 30; t /= 60;
-	sec=t%60; t /= 60;
-	min=t%60;
-	IF hr=t/60
-	THEN	prn(hr); prc('h');
-	FI
-	prn(min); prc('m');
-	prn(sec); prc('s');
+	if (s = as)
+		write(output, s, length(s) - 1);
 }
 
-prn(n)
-	INT		n;
+void prc(char c)
 {
-	itos(n); prs(numbuf);
+	if (c)
+		write(output, &c, 1);
 }
 
-itos(n)
+/* FIXME: time_t is not safely L_INT ! */
+void prt(L_INT t)
 {
-	REG char *abuf; REG POS a, i; INT pr, d;
-	abuf=numbuf; pr=FALSE; a=n;
-	FOR i=10000; i!=1; i/=10
-	DO	IF (pr |= (d=a/i)) THEN *abuf++=d+'0' FI
+	register int hr, min, sec;
+
+	t += 30;
+	t /= 60;
+	sec = t % 60;
+	t /= 60;
+	min = t % 60;
+	if (hr = t / 60) {
+		prn(hr);
+		prc('h');
+	}
+	prn(min);
+	prc('m');
+	prn(sec);
+	prc('s');
+}
+
+void prn(int n)
+{
+	itos(n);
+	prs(numbuf);
+}
+
+/* FIXME: use libc */
+void itos(int n)
+{
+	register char *abuf;
+	register POS a, i;
+	int pr, d;
+	abuf = numbuf;
+	pr = FALSE;
+	a = n;
+	for (i = 10000; i != 1; i /= 10) {
+		if ((pr |= (d = a / i))) {
+			*abuf++ = d + '0';
+		}
 		a %= i;
-	OD
-	*abuf++=a+'0';
-	*abuf++=0;
+		;
+	}
+	*abuf++ = a + '0';
+	*abuf++ = 0;
 }
 
-stoi(icp)
-STRING	icp;
+/* FIXME: use libc */
+int stoi(const char *icp)
 {
-	REG CHAR	*cp = icp;
-	REG INT		r = 0;
-	REG CHAR	c;
+	register const char *cp = icp;
+	register int r = 0;
+	register char c;
 
-	WHILE (c = *cp, digit(c)) ANDF c ANDF r>=0
-	DO r = r*10 + c - '0'; cp++ OD
-	IF r<0 ORF cp==icp
-	THEN	failed(icp,badnum);
-	ELSE	return(r);
-	FI
+	while ((c = *cp, digit(c)) && c && r >= 0) {
+		r = r * 10 + c - '0';
+		cp++;
+	}
+	if (r < 0 || cp == icp) {
+		failed(icp, badnum);
+	} else {
+		return (r);
+		;
+	}
 }
-

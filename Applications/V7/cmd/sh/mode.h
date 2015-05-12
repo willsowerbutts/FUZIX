@@ -9,39 +9,37 @@
 
 #define BYTESPERWORD	(sizeof(char *))
 
-TYPE char	CHAR;
-TYPE char	BOOL;
-TYPE int	UFD;
-TYPE int	INT;
-TYPE float	REAL;
-TYPE void	*ADDRESS;
-TYPE long int	L_INT;
-TYPE unsigned	POS;
-TYPE char	*STRING;
-TYPE int	PIPE[];
-TYPE char	*STKPTR;
-TYPE char	*BYTPTR;
+typedef char CHAR;
+typedef signed char BOOL;
+typedef int UFD;
+typedef void *ADDRESS;
+typedef long int L_INT;
+typedef unsigned POS;
+typedef char *STRING;
+typedef int PIPE[];
+typedef char *STKPTR;
+typedef char *BYTPTR;
 
-STRUCT stat	STATBUF;	/* defined in /usr/sys/stat.h */
-STRUCT blk	*BLKPTR;
-STRUCT fileblk	FILEBLK;
-STRUCT filehdr	FILEHDR;
-STRUCT fileblk	*FILE;
-STRUCT trenod	*TREPTR;
-STRUCT forknod	*FORKPTR;
-STRUCT comnod	*COMPTR;
-STRUCT swnod	*SWPTR;
-STRUCT regnod	*REGPTR;
-STRUCT parnod	*PARPTR;
-STRUCT ifnod	*IFPTR;
-STRUCT whnod	*WHPTR;
-STRUCT fornod	*FORPTR;
-STRUCT lstnod	*LSTPTR;
-STRUCT argnod	*ARGPTR;
-STRUCT dolnod	*DOLPTR;
-STRUCT ionod	*IOPTR;
-STRUCT namnod	NAMNOD;
-STRUCT namnod	*NAMPTR;
+typedef struct stat STATBUF;	/* defined in /usr/sys/stat.h */
+typedef struct blk *BLKPTR;
+typedef struct fileblk FILEBLK;
+typedef struct filehdr FILEHDR;
+typedef struct fileblk *FILE;
+typedef struct trenod *TREPTR;
+typedef struct forknod *FORKPTR;
+typedef struct comnod *COMPTR;
+typedef struct swnod *SWPTR;
+typedef struct regnod *REGPTR;
+typedef struct parnod *PARPTR;
+typedef struct ifnod *IFPTR;
+typedef struct whnod *WHPTR;
+typedef struct fornod *FORPTR;
+typedef struct lstnod *LSTPTR;
+typedef struct argnod *ARGPTR;
+typedef struct dolnod *DOLPTR;
+typedef struct ionod *IOPTR;
+typedef struct namnod NAMNOD;
+typedef struct namnod *NAMPTR;
 #define NIL	((char*)0)
 
 
@@ -55,139 +53,139 @@ STRUCT namnod	*NAMPTR;
 
 
 /* address puns for storage allocation */
-UNION {
-	FORKPTR	_forkptr;
-	COMPTR	_comptr;
-	PARPTR	_parptr;
-	IFPTR	_ifptr;
-	WHPTR	_whptr;
-	FORPTR	_forptr;
-	LSTPTR	_lstptr;
-	BLKPTR	_blkptr;
-	NAMPTR	_namptr;
-	BYTPTR	_bytptr;
-	}	address;
+typedef union {
+	FORKPTR _forkptr;
+	COMPTR _comptr;
+	PARPTR _parptr;
+	IFPTR _ifptr;
+	WHPTR _whptr;
+	FORPTR _forptr;
+	LSTPTR _lstptr;
+	BLKPTR _blkptr;
+	NAMPTR _namptr;
+	BYTPTR _bytptr;
+} address;
 
 
 /* heap storage */
 struct blk {
-	BLKPTR	word;
+	BLKPTR word;
 };
 
 #define	BUFSIZ	64
 struct fileblk {
-	UFD	fdes;
-	POS	flin;
-	BOOL	feof;
-	CHAR	fsiz;
-	STRING	fnxt;
-	STRING	fend;
-	STRING	*feval;
-	FILE	fstak;
-	CHAR	fbuf[BUFSIZ];
+	UFD fdes;
+	POS flin;
+	BOOL feof;
+	CHAR fsiz;
+	char * fnxt;
+	char * fend;
+	char * *feval;
+	FILE fstak;
+	CHAR fbuf[BUFSIZ];
 };
 
 /* for files not used with file descriptors */
 struct filehdr {
-	UFD	fdes;
-	POS	flin;
-	BOOL	feof;
-	CHAR	fsiz;
-	STRING	fnxt;
-	STRING	fend;
-	STRING	*feval;
-	FILE	fstak;
-	CHAR	_fbuf[1];
+	UFD fdes;
+	POS flin;
+	BOOL feof;
+	CHAR fsiz;
+	char * fnxt;
+	char * fend;
+	char * *feval;
+	FILE fstak;
+	CHAR _fbuf[1];
 };
 
 struct sysnod {
-	STRING	sysnam;
-	INT	sysval;
+	const char * sysnam;
+	int sysval;
 };
 
-STRUCT sysnod	SYSNOD;
-STRUCT sysnod	*SYSPTR;
-STRUCT sysnod	SYSTAB[];
+typedef struct sysnod SYSNOD;
+typedef struct sysnod *SYSPTR;
+typedef struct sysnod SYSTAB[];
 
 /* this node is a proforma for those that follow */
 struct trenod {
-	INT	tretyp;
-	IOPTR	treio;
+	int tretyp;
+	IOPTR treio;
 };
 
 /* dummy for access only */
 struct argnod {
-	ARGPTR	argnxt;
-	CHAR	argval[1];
+	ARGPTR argnxt;
+	CHAR argval[1];
 };
 
 struct dolnod {
-	DOLPTR	dolnxt;
-	INT	doluse;
-	CHAR	dolarg[1];
+	DOLPTR dolnxt;
+	int doluse;
+	CHAR dolarg[1];
 };
 
 struct forknod {
-	INT	forktyp;
-	IOPTR	forkio;
-	TREPTR	forktre;
+	int forktyp;
+	IOPTR forkio;
+	TREPTR forktre;
 };
 
 struct comnod {
-	INT	comtyp;
-	IOPTR	comio;
-	ARGPTR	comarg;
-	ARGPTR	comset;
+	int comtyp;
+	IOPTR comio;
+	ARGPTR comarg;
+	ARGPTR comset;
 };
 
 struct ifnod {
-	INT	iftyp;
-	TREPTR	iftre;
-	TREPTR	thtre;
-	TREPTR	eltre;
+	int iftyp;
+	TREPTR iftre;
+	TREPTR thtre;
+	TREPTR eltre;
 };
 
 struct whnod {
-	INT	whtyp;
-	TREPTR	whtre;
-	TREPTR	dotre;
+	int whtyp;
+	TREPTR whtre;
+	TREPTR dotre;
 };
 
 struct fornod {
-	INT	fortyp;
-	TREPTR	fortre;
-	STRING	fornam;
-	COMPTR	forlst;
+	int fortyp;
+	TREPTR fortre;
+	char * fornam;
+	COMPTR forlst;
 };
 
 struct swnod {
-	INT	swtyp;
-	STRING	swarg;
-	REGPTR	swlst;
+	int swtyp;
+	char * swarg;
+	REGPTR swlst;
 };
 
 struct regnod {
-	ARGPTR	regptr;
-	TREPTR	regcom;
-	REGPTR	regnxt;
+	ARGPTR regptr;
+	TREPTR regcom;
+	REGPTR regnxt;
 };
 
 struct parnod {
-	INT	partyp;
-	TREPTR	partre;
+	int partyp;
+	TREPTR partre;
 };
 
 struct lstnod {
-	INT	lsttyp;
-	TREPTR	lstlef;
-	TREPTR	lstrit;
+	int lsttyp;
+	TREPTR lstlef;
+	TREPTR lstrit;
 };
 
 struct ionod {
-	INT	iofile;
-	STRING	ioname;
-	IOPTR	ionxt;
-	IOPTR	iolst;
+	int iofile;
+	char * ioname;
+	IOPTR ionxt;
+	IOPTR iolst;
 };
 
 #define	FORKTYPE	(sizeof(struct forknod))
