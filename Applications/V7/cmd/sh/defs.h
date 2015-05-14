@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <unistd.h>
 #include <stdlib.h>
-
+#include <sys/times.h>
 /*
  *	UNIX shell
  */
@@ -296,7 +296,7 @@ extern void makearg(register char *args);
 /* fault.c */
 extern void fault(register int sig);
 extern void stdsigs(void);
-extern int ignsig(int n);
+extern sighandler_t ignsig(int n);
 extern void getsig(int n);
 extern void oldsigs(void);
 extern void clrsig(int i);
@@ -345,7 +345,7 @@ extern void blank(void);
 extern void prp(void);
 extern void prs(const char *as);
 extern void prc(char c);
-extern void prt(L_INT t);
+extern void prt(clock_t t);
 extern void prn(int n);
 extern void itos(int n);
 extern int stoi(const char *icp);
