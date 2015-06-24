@@ -1,6 +1,11 @@
-Write the .bin file to an SD card or CompactFlash card. The .bin file is a disk
-image so it should be written to the raw disk, not as a file on a filesystem on
-the disk. Any disk 128MB or larger will work fine.
+This is a bootable disk image of Fuzix for UNA BIOS based machines:
+ - N8VEM Mark IV SBC
+ - Zeta v2 SBC
+
+Write the relevant .bin file to an SD card or CompactFlash card, or a real hard
+disk. The .bin file is a disk image so it should be written to the raw disk,
+not as a file on a filesystem on the disk. Any drive approx 64MB (or larger)
+will work fine.
 
 Under Linux and Mac OS X you can use dd for this. For example if your SD card
 was "/dev/sdc" you would do:
@@ -11,6 +16,7 @@ You may need to use sudo ("sudo dd ...")
 
 Under Windows, try http://www.chrysocome.net/dd
 
+*WRS: following text is wrong - fix it*
 The disk image contains two partitions. The first partition is a Fuzix root
 file system.  The second partition contains eight CP/M slices which are largely
 empty, save for the first slice which contains the Fuzix kernel ("FUZIX.COM")
