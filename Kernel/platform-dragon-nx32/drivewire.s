@@ -10,8 +10,13 @@
 	.globl _dw_operation
 	.globl _dw_reset
 
+	.globl _dw_lpr
+	.globl _dw_lpr_close
+	.globl _dw_rtc_read
+
+
 	; imported
-	.globl map_process_always
+	.globl map_process_a
 	.globl map_kernel
 
 	.area .common
@@ -25,12 +30,11 @@ _dw_operation:
 	pshs y
 	; get parameters from C, X points to cmd packet
 	ldy 4,s		; driveptr (dw_tab in .bss so kernel bank)
-	lda ,y		; for now, contains minor = drive number directly
-	ldb 5,x		; rawflag
-	pshs b
-	beq @nomap
-	jsr map_process_always
-@nomap	ldb ,x		; write flag
+	ldb ,y		; for now, contains minor = drive number directly
+	lda 5,x		; page map
+	jsr map_process_a	; same as map_process on nx32
+	tfr b,a
+	ldb ,x		; write flag
 	; buffer location into Y
 	ldy 3,x
 	; sector number into X
@@ -43,9 +47,7 @@ _dw_operation:
 @done	bcs @err
 	bne @err
 	ldx #0
-@fin	tst ,s+
-	beq @ret
-	jsr map_kernel
+@fin	jsr map_kernel
 @ret	puls y,pc
 @err	ldx #0xFFFF
 	bra @fin
@@ -131,6 +133,68 @@ ReRead   pshs  a
 	 bra   ReRead  
 ReadErr  comb			; set carry bit
 ReadEx	 puls  d,x,y,pc
+
+	.area .text
+;
+;	Virtual devices on DriveWire
+;
+;	Line printer
+;	RTC
+;	Virtual serial ???
+;
+;
+;	dw_lpr(uint8_t c)
+;
+;	Print a byte to drive wire printers
+;
+;	B holds the byte. Call with interrupts off
+;
+_dw_lpr:
+	pshs y
+	stb lprb2
+	ldx #lprb
+	ldy #2
+dwop:
+	jsr DWWrite
+	puls y,pc
+
+;
+;	dw_lpr_close(void)
+;
+;	Close the printer device
+;
+_dw_lpr_close:
+	pshs y
+	ldx #lprb3
+	ldy #1
+	bra dwop
+
+;
+;	uint8_t dw_rtc_read(uint8_t *p)
+;
+_dw_rtc_read:
+	pshs y
+	ldy #2
+	pshs x
+	ldx #lprrtw
+	jsr DWWrite
+	puls x
+	ldy #6
+	clra
+	jsr DWRead
+	clrb
+	sbcb #0
+	bra dwop
+
+	.area .data
+
+lprb:	.db 0x50	; print char
+lprb2:	.db 0x00	; filled in with byte to send
+lprb3:	.db 0x46	; printer flush
+lprrtw:	.db 0x23	; request for time
+
+	.area .common
+
 
 ; Used by DWRead and DWWrite
 IntMasks equ   $50

@@ -111,11 +111,12 @@ arg_t _sync(void)
 arg_t _stat(void)
 {
 	inoptr ino;
+	int err;
 	if (!(ino = n_open(path, NULLINOPTR)))
 		return (-1);
-	stcpy(ino, buf);
+	err = stcpy(ino, buf);
 	i_deref(ino);
-	return (0);
+	return err;
 }
 
 #undef path
@@ -426,6 +427,9 @@ arg_t _read(void)
 	inoptr ino;
 	uint8_t flag;
 
+	if (!nbytes)
+	        return 0;
+
 	if (!valaddr(buf, nbytes))
 	        return -1;
 	/* Set up u_base, u_offset, ino; check permissions, file num. */
@@ -485,6 +489,9 @@ arg_t _write(void)
 {
 	inoptr ino;
 	uint8_t flag;
+
+	if (!nbytes)
+	        return 0;
 
 	if (!valaddr(buf, nbytes))
 	        return -1;

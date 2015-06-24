@@ -113,7 +113,7 @@ void df_dev(dev_t dev)
 
     printf("%-16s %6u %6u %6u %5u%% %s\n",
             dn, Total, Used, Free, Percent,
-            fsys.s_mntpt ? mntpoint(dn) : "/");
+            fsys.s_mntpt ? mntpoint(dn) : (const char*) "/");
 }
 
 void df_all(void)
@@ -125,13 +125,14 @@ void df_all(void)
     
     f = fopen("/etc/mtab", "r");
     if (f) {
-        while (fgets(tmp, sizeof(MTAB_LINE), f)) {
-			dev = strtok(tmp, " ");
-			mntpt = strtok(NULL, " ");
-            df_path(mntpt);
+        while (fgets(tmp, MTAB_LINE, f)) {
+	    dev = strtok(tmp, " ");
+	    mntpt = strtok(NULL, " ");
+            if (mntpt)
+                df_path(mntpt);
         }
         fclose(f);
-    }else{
+    } else {
         fprintf(stderr, "df: cannot open /etc/mtab: %s\n", strerror(errno));
     }
 }
@@ -156,9 +157,11 @@ const char *devname(dev_t devno)
                 continue;
             if (fstat.st_rdev != devno)
                 continue;
+            closedir(dp);
             return namebuf;
         }
     }
+    closedir(dp);
 
     sprintf(namebuf, "%d", devno);
     return namebuf;

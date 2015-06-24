@@ -10,31 +10,38 @@
 #undef CONFIG_SINGLETASK
 /* Pure swap */
 #undef CONFIG_SWAP_ONLY
-/* Banked Kernel: need to fix GCC first */
+
 #define CONFIG_BANK_FIXED
 #define MAX_MAPS 4
 #define MAP_SIZE 0x7C00U
 #define CONFIG_BANKS	1
 /* And swapping */
-#undef SWAPDEV
+#define SWAPDEV 2049		/* DriveWire drive 1 */
+#define SWAP_SIZE   0x40	/* 32K in 512 byte blocks */
+#define SWAPBASE    0x8000	/* We swap the lot, including stashed uarea */
+#define SWAPTOP     0xFF00	/* so it's a round number of 256 byte sectors */
+#define MAX_SWAPS   32
 
 /* Permit large I/O requests to bypass cache and go direct to userspace */
 #define CONFIG_LARGE_IO_DIRECT
 
+#define MAX_BLKDEV  	3	/* 2 IDE drives + 1 SPI */
+#define SD_DRIVE_COUNT	1	/* Could be higher with multiple CS used */
+#define DEVICE_IDE              /* enable if IDE interface present */
+#define IDE_REG_CS1_BASE 0xFF50
+#define IDE_IS_MMIO  1		/* MMIO IDE */
+
 /* Video terminal, not a serial tty */
 #define CONFIG_VT
-/* Simple text mode */
-#define CONFIG_VT_SIMPLE
+#define CONFIG_FONT8X8
 /* Vt definitions */
-#define VT_BASE		(uint8_t *)0x0400	/* Default video text mode base */
 #define VT_WIDTH	32
-#define VT_HEIGHT	16
+#define VT_HEIGHT	24
 #define VT_RIGHT	31
-#define VT_BOTTOM	15
-#define VT_INITIAL_LINE	4
+#define VT_BOTTOM	23
+#define VT_INITIAL_LINE	0
 
-extern unsigned char vt_mangle_6847(unsigned char c);
-#define VT_MAP_CHAR(x)	vt_mangle_6847(x)
+#define VIDEO_BASE	0x0400
 
 /* RS/Tandy Color Computer keyboard */
 #undef CONFIG_COCO_KBD
@@ -60,3 +67,4 @@ extern unsigned char vt_mangle_6847(unsigned char c);
 #define TTYDEV   BOOT_TTY /* Device used by kernel for messages, panics */
 #define NBUFS    6       /* Number of block buffers */
 #define NMOUNTS	 2	  /* Number of mounts at a time */
+#define swap_map(x)	((uint8_t *)(x))

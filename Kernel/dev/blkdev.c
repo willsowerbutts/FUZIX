@@ -57,7 +57,7 @@ int blkdev_open(uint8_t minor, uint16_t flags)
 {
     uint8_t drive, partition;
 
-    flags; /* unused */
+    used(flags);
 
     drive = minor >> 4;
     partition = minor & 0x0F;
@@ -80,13 +80,13 @@ static int blkdev_transfer(uint8_t minor, uint8_t rawflag)
     blk_op.blkdev = &blkdev_table[minor >> 4];
     partition = minor & 0x0F;
 
+    blk_op.is_user = rawflag;
     switch(rawflag){
         case 0:
             /* read single 512-byte sector to buffer in kernel memory */
             blk_op.nblock = 1;
             blk_op.lba = udata.u_buf->bf_blk;
             blk_op.addr = udata.u_buf->bf_data;
-            blk_op.is_user = false;
             break;
         case 1:
             /* read some number of 512-byte sectors directly to user memory */
@@ -95,8 +95,15 @@ static int blkdev_transfer(uint8_t minor, uint8_t rawflag)
                 panic("blkdev: not integral");
             blk_op.lba = (udata.u_offset >> BLKSHIFT);
             blk_op.addr = udata.u_base;
-            blk_op.is_user = true;
             break;
+#ifdef SWAPDEV
+        case 2:
+            blk_op.nblock = swapcnt >> BLKSHIFT;
+            blk_op.lba = swapblk;
+            blk_op.addr = swapbase;
+            blk_op.swap_page = swappage;
+            break;
+#endif
         default:
             goto xferfail;
     }
@@ -129,21 +136,21 @@ xferfail:
 
 int blkdev_read(uint8_t minor, uint8_t rawflag, uint8_t flag)
 {
-    flag; /* not used */
+    used(flag); /* not used */
     blk_op.is_read = true;
     return blkdev_transfer(minor, rawflag);
 }
 
 int blkdev_write(uint8_t minor, uint8_t rawflag, uint8_t flag)
 {
-    flag; /* not used */
+    used(flag); /* not used */
     blk_op.is_read = false;
     return blkdev_transfer(minor, rawflag);
 }
 
 int blkdev_ioctl(uint8_t minor, uint16_t request, char *data)
 {
-    data; /* unused */
+    used(data); /* unused */
 
     if (request != BLKFLSBUF)
 	return -1;
@@ -179,7 +186,7 @@ void blkdev_scan(blkdev_t *blk, uint8_t flags)
 {
     uint8_t letter = 'a' + (blk - blkdev_table);
 
-    flags; /* not used */
+    used(flags); /* not used */
 
     blk_op.blkdev = blk;
     mbr_parse(letter);

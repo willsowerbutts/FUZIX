@@ -14,6 +14,8 @@
         .globl map_process_a
         .globl map_process_always
         .globl copybank
+	.globl _nready
+	.globl _platform_idle
 
 	# exported
         .globl _switchout
@@ -21,12 +23,12 @@
         .globl _dofork
 	.globl _ramtop
 
-
         include "kernel.def"
         include "../kernel09.def"
 
 	.area .common
 
+	; ramtop must be in common although not used here
 _ramtop:
 	.dw 0
 
@@ -49,13 +51,55 @@ _switchout:
 	pshs d,y,u
 	sts U_DATA__U_SP	; this is where the SP is restored in _switchin
 
-        ; set inint to false
-	lda #0
-	sta _inint
+	; See if we are about to go idle
+	lda _nready
+	; Someone else will run - go the slow path into the scheduler
+	bne slow_path
 
+	;
+	; Wait for something to become ready
+	;
+idling:
+	andcc #0xef
+	jsr _platform_idle
+	orcc #0x10
+
+	lda _nready
+	beq idling
+
+	; Did multiple things wake up, if so we must follow the slow
+	; path
+	cmpa #1
+	bne slow_path
+
+	; Was the waker us ?
+	ldx U_DATA + U_DATA__U_PTAB
+	lda P_TAB__P_STATUS_OFFSET,x
+	cmpa #P_READY
+	; No: follow the slow path
+	bne slow_path
+
+	; We can use the fast path for returning.
+	;
+	; Mark ourself running with a new time slice allocation
+	;
+	lda #P_RUNNING
+	sta P_TAB__P_STATUS_OFFSET,x
+	ldx #0
+	stx _runticks
+	;
+	; We idled and got the CPU back - fast path, and we know
+	; we are not a pre-emption. In effect the switchout() becomes
+	; a normal function call and we don't have to stash anything or
+	; bank switch.
+	;
+	andcc #0xef
+	puls x,y,u,pc
+
+
+slow_path:
 	; Stash the uarea into process memory bank
 	jsr map_process_always
-	sty _swapstack+2
 
 	ldx #U_DATA
 	ldy #U_DATA_STASH
@@ -63,51 +107,52 @@ stash	ldd ,x++
 	std ,y++
 	cmpx #U_DATA+U_DATA__TOTALSIZE
 	bne stash
-	ldy _swapstack+2
 
 	; get process table in
 	jsr map_kernel
 
-        ; find another process to run (may select this one again) returns it
-        ; in X
+        ; find another (or same) process to run, returned in X
         jsr _getproc
         jsr _switchin
         ; we should never get here
         jsr _trap_monitor
-
-_swapstack .dw 0
-	.dw 0
 
 badswitchmsg: .ascii "_switchin: FAIL"
             .db 13
 	    .db 10
 	    .db 0
 
+newpp   .dw 0
+
 ; new process pointer is in X
 _switchin:
         orcc #0x10		; irq off
 
-	;pshs x
-	stx _swapstack
-	; get process table - must be in already from switchout
-	; jsr map_kernel
+	stx newpp
+	; get process table
 	lda P_TAB__P_PAGE_OFFSET+1,x		; LSB of 16-bit page no
 
-	; if we are switching to the same process
+	; check if we are switching to the same process
 	cmpa U_DATA__U_PAGE+1
 	beq nostash
 
+	; process was swapped out?
+	cmpa #0
+	bne not_swapped
+	jsr _swapper		; void swapper(ptptr p)
+	ldx newpp
+	lda P_TAB__P_PAGE_OFFSET+1,x
+
+not_swapped:
 	jsr map_process_a
 	
 	; fetch uarea from process memory
-	sty _swapstack+2
 	ldx #U_DATA_STASH
 	ldy #U_DATA
 stashb	ldd ,x++
 	std ,y++
 	cmpx #U_DATA_STASH+U_DATA__TOTALSIZE
 	bne stashb
-	ldy _swapstack+2
 
 	; we have now new stacks so get new stack pointer before any jsr
 	lds U_DATA__U_SP
@@ -116,14 +161,17 @@ stashb	ldd ,x++
 	jsr map_kernel
 
 nostash:
-	;puls x
-	ldx _swapstack
+	ldx newpp
         ; check u_data->u_ptab matches what we wanted
 	cmpx U_DATA__U_PTAB
         bne switchinfail
 
 	lda #P_RUNNING
 	sta P_TAB__P_STATUS_OFFSET,x
+
+	; fix any moved page pointers
+	lda P_TAB__P_PAGE_OFFSET+1,x
+	sta U_DATA__U_PAGE+1
 
 	ldx #0
 	stx _runticks
@@ -134,8 +182,8 @@ nostash:
         puls x,y,u ; return code and saved U and Y
 
         ; enable interrupts, if the ISR isn't already running
-	lda _inint
-        beq swtchdone ; in ISR, leave interrupts off
+	lda U_DATA__U_ININTERRUPT
+        bne swtchdone ; in ISR, leave interrupts off
 	andcc #0xef
 swtchdone:
         rts
@@ -148,6 +196,7 @@ switchinfail:
         jmp _trap_monitor
 
 	.area .data
+
 fork_proc_ptr: .dw 0 ; (C type is struct p_tab *) -- address of child process p_tab entry
 
 	.area .common
@@ -207,11 +256,14 @@ fork_copy:
 	ldx fork_proc_ptr
 	ldb P_TAB__P_PAGE_OFFSET+1,x	; new bank
 	lda U_DATA__U_PAGE+1		; old bank
-	ldx #0x8000			; PROGBASE
-	ldu U_DATA__U_TOP
-	jsr copybank		; preserves A,B, clobbers X,U
+	ldx #PROGBASE
+	ldu U_DATA__U_BREAK		; top of data
+	jsr copybank			; preserves A,B, clobbers X,U
+	ldx U_DATA__U_SYSCALL_SP
+	ldu U_DATA__U_TOP		; top of process memory
+	jsr copybank
 
-; stash parent urea (including kernel stack)
+; stash parent uarea (including kernel stack)
 	jsr map_process_a
 	ldx #U_DATA
 	ldu #U_DATA_STASH

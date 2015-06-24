@@ -334,16 +334,15 @@ typedef struct p_tab {
     void *      p_wait;         /* Address of thing waited for */
     uint16_t    p_page;         /* Page mapping data */
     uint16_t	p_page2;	/* It's really four bytes for the platform */
+    /* Update kernel.def if you change fields above this comment */
 #ifdef udata
     struct u_data *p_udata;	/* Udata pointer for platforms using dynamic udata */
 #endif
-    /* Update kernel.def if you change fields above this comment */
     /* Everything below here is overlaid by time info at exit */
     uint16_t    p_priority;     /* Process priority */
     uint32_t    p_pending;      /* Bitmask of pending signals */
     uint32_t    p_ignored;      /* Bitmask of ignored signals */
     uint32_t    p_held;         /* Bitmask of held signals */
-    struct u_block *p_ublk;     /* Pointer to udata block when not running */
     uint16_t    p_waitno;       /* wait #; for finding longest waiting proc */
     uint16_t    p_timeout;      /* timeout in centiseconds - 1 */
                                 /* 0 indicates no timeout, 1 = expired */
@@ -354,6 +353,7 @@ typedef struct p_tab {
 /**HP**/
     uint16_t	p_pgrp;		/* Process group */
     uint8_t	p_nice;
+    usize_t	p_top;		/* Copy of u_top */
 #ifdef CONFIG_PROFIL
     uint8_t	p_profscale;
     void *	p_profbuf;
@@ -369,18 +369,19 @@ typedef struct u_data {
     uint16_t    u_page2;        /* Process page data (equal to u_ptab->p_page2) */
     bool        u_insys;        /* True if in kernel */
     uint8_t     u_callno;       /* sys call being executed. */
-    void *      u_syscall_sp;   /* Stores SP when process makes system call */
+    uaddr_t     u_syscall_sp;   /* Stores SP when process makes system call */
     susize_t    u_retval;       /* Return value from sys call */
     int16_t     u_error;        /* Last error number */
     void *      u_sp;           /* Stores SP when process is switchped */
     bool        u_ininterrupt;  /* True when the interrupt handler is runnign (prevents recursive interrupts) */
     int8_t      u_cursig;       /* Next signal to be dispatched */
-    arg_t       u_argn;         /* Last system call arg */
-    arg_t       u_argn1;        /* This way because args on stack backwards */
-    arg_t       u_argn2;
-    arg_t       u_argn3;        /* args n-3, n-2, n-1, and n */
+    arg_t       u_argn;         /* First C argument to the system call */
+    arg_t       u_argn1;        /* Second C argument */
+    arg_t       u_argn2;	/* Third C argument */
+    arg_t       u_argn3;        /* Fourth C argument */
     void *      u_isp;          /* Value of initial sp (argv) */
     usize_t	u_top;		/* Top of memory for this task */
+    uaddr_t	u_break;	/* Top of data space */
     int     (*u_sigvec[NSIGS])(int);   /* Array of signal vectors */
     /**** If you change this top section, also update offsets in "kernel.def" ****/
 
@@ -397,7 +398,6 @@ typedef struct u_data {
     uint16_t    u_gid;
     uint16_t    u_euid;
     uint16_t    u_egid;
-    uaddr_t     u_break;        /* Top of data space */
     char        u_name[8];      /* Name invoked with */
     clock_t     u_utime;        /* Elapsed ticks in user mode */
     clock_t     u_stime;        /* Ticks in system mode */
@@ -410,8 +410,8 @@ typedef struct u_data {
     uint16_t	u_cloexec;	/* Close on exec flags */
     inoptr      u_cwd;          /* Index into inode table of cwd. */
     inoptr	u_root;		/* Index into inode table of / */
-    //inoptr      u_ino;          /* Used during execve() */
     inoptr	u_rename;	/* Used in n_open for rename() checking */
+    inoptr	u_ctty;		/* Controlling tty */
 } u_data;
 
 
@@ -516,6 +516,10 @@ struct s_argblk {
 #define ENOLCK		35		/* Lock table full */
 #define ENOTEMPTY	36		/* Directory is not empty */
 #define ENAMETOOLONG    37              /* File name too long */
+#define EAFNOSUPPORT	38		/* Address family not supported */
+#define EALREADY	39		/* Operation already in progress */
+#define EADDRINUSE	40		/* Address already in use */
+#define EADDRNOTAVAIL	41		/* Address not available */
 
 /*
  * ioctls for kernel internal operations start at 0x8000 and cannot be issued
@@ -622,6 +626,7 @@ extern void switchout(void);
 extern void doexec(uaddr_t start_addr);
 extern void switchin(ptptr process);
 extern int16_t dofork(ptptr child);
+extern uint8_t need_resched;
 
 /* devio.c */
 extern uint8_t *bread (uint16_t dev, blkno_t blk, bool rewrite);
@@ -632,6 +637,7 @@ extern void *tmpbuf(void);
 extern void *zerobuf(void);
 extern void bufsync(void);
 extern bufptr bfind(uint16_t dev, blkno_t blk);
+extern void bdrop(uint16_t dev);
 extern bufptr freebuf(void);
 extern void bufinit(void);
 extern void bufdiscard(bufptr bp);
@@ -681,7 +687,8 @@ extern void oft_deref(int8_t of);
 extern int8_t uf_alloc(void);
 /* returns index of slot, or -1 on failure */
 extern int8_t uf_alloc_n(int n);
-extern void i_ref(inoptr ino);
+#define i_ref(ino) ((ino)->c_refs++, (ino))
+//extern void i_ref(inoptr ino);
 extern void i_deref(inoptr ino);
 extern void wr_inode(inoptr ino);
 extern bool isdevice(inoptr ino);
@@ -705,6 +712,7 @@ extern void readi(inoptr ino, uint8_t flag);
 extern void writei(inoptr ino, uint8_t flag);
 extern int16_t doclose (uint8_t uindex);
 extern inoptr rwsetup (bool is_read, uint8_t *flag);
+extern int dev_openi(inoptr *ino, uint8_t flag);
 
 /* mm.c */
 extern unsigned int uputsys(unsigned char *from, usize_t size);
@@ -788,6 +796,7 @@ extern uaddr_t pagemap_mem_used(void);
 extern void map_init(void);
 extern void platform_idle(void);
 extern uint8_t rtc_secs(void);
+extern void trap_reboot(void);
 
 /* Will need a uptr_t eventually */
 extern uaddr_t ramtop;	     /* Note: ramtop must be in common in some cases */

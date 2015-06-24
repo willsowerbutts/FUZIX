@@ -74,11 +74,13 @@ static int maps_needed(uint16_t top)
  *	Allocate the maps for this task post fork
  *	We have a hackish fix for init that would be nice
  *	resolve.
+ *
+ *	Use p-> not udata. The udata is not yet swapped in!
  */
 int pagemap_alloc(ptptr p)
 {
 	uint8_t *ptr = (uint8_t *) & p->p_page;
-	int needed = maps_needed(udata.u_top);
+	int needed = maps_needed(p->p_top);
 	int i;
 
 #ifdef SWAPDEV
@@ -161,6 +163,8 @@ uint16_t pagemap_mem_used(void)
  *	Swap out the memory of a process to make room
  *	for something else. For bank16k do this as four operations
  *	ready for when we pass page values not processes to the drivers
+ *
+ *	FIXME: bank16k should only read/write out the banks that are in use
  */
 
 int swapout(ptptr p)
@@ -171,7 +175,7 @@ int swapout(ptptr p)
 	uint16_t base = SWAPBASE;
 	uint16_t size = (0x4000 - SWAPBASE) >> 9;
 	uint16_t i;
-	uint8_t *pt = (uint8_t *)&p->page;
+	uint8_t *pt = (uint8_t *)&p->p_page;
 
 	if (page)
 		panic("process already swapped!\n");
@@ -207,6 +211,8 @@ int swapout(ptptr p)
 
 /*
  * Swap ourself in: must be on the swap stack when we do this
+ *
+ * FIXME: bank16k should only read/write out the banks that are in use
  */
 void swapin(ptptr p, uint16_t map)
 {
@@ -214,7 +220,7 @@ void swapin(ptptr p, uint16_t map)
 	uint16_t base = SWAPBASE;
 	uint16_t size = (0x4000 - SWAPBASE) >> 9;
 	uint16_t i;
-	uint8_t *pt = (uint8_t *)&p->page;
+	uint8_t *pt = (uint8_t *)&p->p_page;
 
 #ifdef DEBUG
 	kprintf("Swapin %x, %d\n", p, p->p_page);

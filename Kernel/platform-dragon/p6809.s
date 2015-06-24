@@ -14,10 +14,11 @@
 	    .globl map_process_always
 	    .globl map_save
 	    .globl map_restore
-	    .globl _kernel_flag
+	    .globl _need_resched
 
             ; exported debugging tools
             .globl _trap_monitor
+            .globl _trap_reboot
             .globl outchar
 	    .globl _di
 	    .globl _ei
@@ -34,17 +35,10 @@
 
             .area .common
 
-trapmsg:    .ascii "Trapdoor: SP="
-            .db 0
-trapmsg2:   .ascii ", PC="
-            .db 0
-tm_user_sp: .dw 0
-
 _trap_reboot:
 _trap_monitor:
 	    cwai #0
 	    bra _trap_monitor
-
 
 _di:
 	    tfr cc,b		; return the old irq state
@@ -69,6 +63,9 @@ init_hardware:
 	    std _ramsize
 	    ldd #56
 	    std _procmem
+	    ; set up SAM vector for kernel
+	    ldx #0
+	    jsr _program_vectors
 	    ; Turn on PIA  CB1 (50Hz interrupt)
 	    lda 0xFF03
 	    ora #1
@@ -180,6 +177,6 @@ lc	    anda #0x3F
 
 	    .area .data
 
-_kernel_flag: .db 1
+_need_resched: .db 0
 traceptr:
 	   .dw 0x6000

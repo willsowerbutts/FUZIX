@@ -22,6 +22,10 @@ uint8_t curtty;		/* output side */
 uint8_t inputtty;	/* input side */
 static struct vt_switch ttysave[2];
 
+/* FIXME: this will eventually vary by tty so we'll need to either load
+   it then call the vt ioctl or just intercept the vt ioctl */
+uint8_t vtattr_cap;
+
 char tbuf1[TTYSIZ];
 char tbuf2[TTYSIZ];
 char tbuf3[TTYSIZ];
@@ -160,6 +164,9 @@ int mtxtty_close(uint8_t minor)
 	irqflags_t flags;
 	int err = tty_close(minor);
 
+	if (ttydata[minor].users)
+		return 0;
+
 	flags = di();
 	if (minor == 3) {
 		serialAc = 0x05;
@@ -252,17 +259,17 @@ static void keydecode(void)
 		return;
 	}
 
-	if (keymap[6] & 65)	/* shift */
+	if (keymap[6] & 65) {	/* shift */
 		c = shiftkeyboard[keybyte][keybit];
-	else
+		if (c == KEY_F1 || c == KEY_F2) {
+			if (inputtty != c - KEY_F1) {
+				inputtty = c - KEY_F1;
+			}
+			return;
+		}
+	} else
 		c = keyboard[keybyte][keybit];
 
-	if (c == 0xF1 || c == 0xF2) {
-		if (inputtty != c - 0xF1) {
-			inputtty = c - 0xF1;
-		}
-		return;
-	}
 
 
 	if (keymap[2] & 1) {	/* control */
@@ -311,3 +318,5 @@ void tty_interrupt(void)
 /* This is used by the vt asm code, but needs to live in the kernel */
 uint16_t cursorpos;
 
+/* FIXME: need to wrap vt_ioctl so we switch to the right tty before asking
+   the size! */

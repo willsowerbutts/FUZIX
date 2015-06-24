@@ -20,8 +20,8 @@ char *mapstat(char s)
 	case P_FORKING: return "Forking";
 	case P_RUNNING: return "Running";
 	case P_READY:   return "Ready";
-	case P_SLEEP:   
-	case P_XSLEEP:  return "Sleeping";
+	case P_SLEEP:
+	case P_XSLEEP:  return "Asleep";
 	case P_PAUSE:   return "Paused";
 	case P_WAIT:    return "Waiting";
     }
@@ -33,8 +33,8 @@ int do_ps(void)
     int i, j, uid, pfd, ptsize;
     struct passwd *pwd;
     struct p_tab *pp;
-    struct p_tab ptab[PTABSIZE];
-    char name[10], uname[20];
+    static struct p_tab ptab[PTABSIZE];
+    static char name[10], uname[20];
 
     uid = getuid();
 

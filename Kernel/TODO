@@ -2,7 +2,7 @@ Big TODO Items Before 0.1 Release
 ---------------------------------
 
 o 	BSD groups can be done but do we care ?
-IP	Termios and speed hooks to tty drivers
+DONE	Termios and speed hooks to tty drivers
 DONE	hangup ioctl (vhangup) plus hangups for group leader exits
 DONE	rename should delete old files it renames over
 o	SYS5 signal functionality and other signals (SIGCLD, STOP etc)
@@ -10,8 +10,6 @@ IP	SYS5 signal holding
 o	ptrace
 o	Core dumps
 o	time_t bits hidden in inode
-o	n_openw() - as n_open but errors on R/O mount or media, getinodew ??
-	and update setftime ?
 NA	RTC setting
 DONE	Lock clock to RTC seconds
 o	Can we make the mount point buffers writable to disk too so we can
@@ -45,7 +43,8 @@ o	Different magic for "big" fs - 32bit block numbers only on raw
 	devices. Split blkno_t into blkno_t blknodev_t or similar
 DONE	Carrier handling for tty devices
 o	Revoke 8)
-DONE	Uptime/loadaverage/swapfree etc data
+DONE	Uptime/loadaverage/free
+o	swapfree
 o	Virtual device hooks for networking
 o	Pty/tty devices
 o	Finish select/poll

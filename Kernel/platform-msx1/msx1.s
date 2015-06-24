@@ -15,7 +15,7 @@
 	    .globl map_save
 	    .globl map_restore
 	    .globl _slot_table
-	    .globl _kernel_flag
+	    .globl _need_resched
 
 	    ; video driver
 	    .globl _vtinit
@@ -30,7 +30,7 @@
 
             .globl _tty_inproc
             .globl unix_syscall_entry
-            .globl trap_illegal
+            .globl _trap_reboot
 	    .globl nmi_handler
 	    .globl null_handler
 
@@ -79,8 +79,8 @@ _trap_reboot:
 	    di
 	    halt
 
-_kernel_flag:
-	   .db 1
+_need_resched:
+	   .db 0
 
 
 ; -----------------------------------------------------------------------------

@@ -1,14 +1,12 @@
 /* Set if you want RTC support and have an RTC on ports 0xB0-0xBC */
 #define CONFIG_RTC
 
-
-
 /* Enable to make ^Z dump the inode table for debug */
 #undef CONFIG_IDUMP
 /* Enable to make ^A drop back into the monitor */
 #undef CONFIG_MONITOR
 /* Profil syscall support (not yet complete) */
-#define CONFIG_PROFIL
+#undef CONFIG_PROFIL
 /* Multiple processes in memory at once */
 #define CONFIG_MULTI
 /* Single tasking */
@@ -17,6 +15,7 @@
 #define CONFIG_VT
 /* Simple character addressed device */
 #define CONFIG_VT_SIMPLE
+#define CONFIG_VT_MULTI
 /* Banked memory set up */
 #define CONFIG_BANK_FIXED
 #define MAX_MAPS	2
@@ -25,7 +24,7 @@
 #define CONFIG_BANKS	2	/* 2 x 32K */
 
 /* Vt definitions */
-#define VT_BASE		((uint8_t *)0xF800)
+#define VT_BASE		vtbase[curtty]
 #define VT_WIDTH	80
 #define VT_HEIGHT	24
 #define VT_RIGHT	79

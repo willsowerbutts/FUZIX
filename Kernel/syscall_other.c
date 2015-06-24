@@ -61,7 +61,7 @@ arg_t _rename(void)
 	/* Check we can write the src dir, we don't want to fail on
 	   ch_link */
 	if (!(getperm(srcp) & OTH_WR) && esuper()) {
-		udata.u_error = EPERM;
+		udata.u_error = EACCES;
 		goto nogood;
 	}
 	/* Destination exists ? If so we must remove it if possible */
@@ -429,13 +429,15 @@ char *ptr;
 
 arg_t _uadmin(void)
 {
-	if (!esuper())
+	if (esuper())
 		return -1;
+	_sync();
 	/* Wants moving into machine specific files */
-	if (cmd == A_SHUTDOWN || cmd == A_REBOOT || cmd == A_DUMP) {
-		_sync();
+	if (cmd == A_SHUTDOWN || cmd == A_DUMP)
 		trap_monitor();
-	}
+	if (cmd == A_REBOOT)
+		trap_reboot();
+
 	/* We don't do SWAPCTL yet */
 	udata.u_error = EINVAL;
 	return -1;

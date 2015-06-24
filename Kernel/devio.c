@@ -116,18 +116,23 @@ void *zerobuf(void)
 	return b;
 }
 
+static void bdput(bufptr bp)
+{
+	bdwrite(bp);
+	if (bp->bf_busy == BF_FREE)
+		bp->bf_dirty = false;
+	d_flush(bp->bf_dev);
+}
 
 void bufsync(void)
 {
 	bufptr bp;
 
+	/* FIXME: this can generate a lot of d_flush calls when you have
+	   plenty of buffers */
 	for (bp = bufpool; bp < bufpool + NBUFS; ++bp) {
-		if ((bp->bf_dev != NO_DEVICE) && bp->bf_dirty) {
-			bdwrite(bp);
-			if (bp->bf_busy == BF_FREE)
-				bp->bf_dirty = false;
-			d_flush(bp->bf_dev);
-		}
+		if ((bp->bf_dev != NO_DEVICE) && bp->bf_dirty)
+		        bdput(bp);
 	}
 }
 
@@ -142,6 +147,17 @@ bufptr bfind(uint16_t dev, blkno_t blk)
 	return NULL;
 }
 
+void bdrop(uint16_t dev)
+{
+	bufptr bp;
+
+	for (bp = bufpool; bp < bufpool + NBUFS; ++bp) {
+		if (bp->bf_dev == dev) {
+		        bdput(bp);
+		        bp->bf_dev = NO_DEVICE;
+                }
+	}
+}
 
 bufptr freebuf(void)
 {
@@ -242,23 +258,20 @@ int cdwrite(uint16_t dev, uint8_t flag)
 	return ((*dev_tab[major(dev)].dev_write) (minor(dev), 1, flag));
 }
 
-// WRS: swapread(), swapwrite() removed.
-
 int d_open(uint16_t dev, uint8_t flag)
 {
-	if (!validdev(dev))
+	if (!validdev(dev)) {
+	        udata.u_error = ENXIO;
 		return -1;
+        }
 	return ((*dev_tab[major(dev)].dev_open) (minor(dev), flag));
 }
 
-
-/* FIXME: on the last close we ought to flush/invalidate any bufs
-   for this device so we can support swapping between media properly
-   (right now the cache is so small it happens to work...) */
 int d_close(uint16_t dev)
 {
 	if (!validdev(dev))
 		panic("d_close: bad device");
+        bdrop(dev);
 	return (*dev_tab[major(dev)].dev_close) (minor(dev));
 }
 
@@ -280,9 +293,14 @@ int d_ioctl(uint16_t dev, uint16_t request, char *data)
 
 int d_flush(uint16_t dev)
 {
-	if (!validdev(dev))
-		panic("d_flush: bad device");
-	return (*dev_tab[major(dev)].dev_ioctl) (minor(dev), BLKFLSBUF, 0);
+	/* Not as clean as would be ideal : FIXME */
+	int r = d_ioctl(dev, BLKFLSBUF, 0);
+	/* Not knowing the ioctl is not an offence */
+	if (r && udata.u_error == ENOTTY) {
+		udata.u_error = 0;
+		r = 0;
+	}
+	return r;
 }
 
 /*

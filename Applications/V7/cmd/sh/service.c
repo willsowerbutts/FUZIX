@@ -149,7 +149,7 @@ static const char *execs(const char *ap, const char *t[])
 	trim(p = curstak());
 
 	sigchk();
-	execve(p, &t[0], (const char **)xecenv);
+	execve(p, (char**) &t[0], (char **)xecenv);
 	switch (errno) {
 	case ENOEXEC:
 		flags = 0;
@@ -297,7 +297,7 @@ char *mactrim(char *s)
 
 char **scan(int argn)
 {
-	register ARGPTR argp = (ARGPTR) (Rcheat(gchain) & ~ARGMK);
+	register ARGPTR argp = (ARGPTR) (((intptr_t)(gchain)) & ~ARGMK);
 	register char **comargn, **comargm;
 
 	comargn = (char **) getstak(BYTESPERWORD * argn + BYTESPERWORD);
@@ -308,14 +308,13 @@ char **scan(int argn)
 		*--comargn = argp->argval;
 		if (argp = argp->argnxt)
 			trim(*comargn);
-		if (argp == 0 || Rcheat(argp) & ARGMK) {
+		if (argp == 0 || ((intptr_t)(argp)) & ARGMK) {
 			gsort(comargn, comargm);
 			comargm = comargn;
 		}
 		/* Lcheat(argp) &= ~ARGMK; */
-		argp = (ARGPTR) (Rcheat(argp) & ~ARGMK);
-	}
-	return comargn;
+		argp = (ARGPTR) (((intptr_t)(argp)) & ~ARGMK); } return
+	comargn;
 }
 
 static void gsort(char *from[], char *to[])

@@ -152,7 +152,8 @@ static void lsfile(char *name, struct stat *statbuf, int flags)
 
     struct passwd *pwd;
     struct group *grp;
-    char buf[PATHLEN], *cp = buf;
+    static char buf[PATHLEN];
+	char *cp = buf;
     int len;
 
     *cp = '\0';
@@ -217,7 +218,8 @@ void main(int argc, char *argv[])
     BOOL endslash;
     DIR *dirp;
     int i;
-    char *cp, *name, **newlist, fullname[PATHLEN];
+    char *cp, *name, **newlist;
+	static char fullname[PATHLEN];
 
     if ((list = (char **) malloc(LISTSIZE * sizeof(char *))) == NULL) {
 	fprintf(stderr, "No memory for ls buffer\n");
@@ -295,9 +297,9 @@ void main(int argc, char *argv[])
 	    if ((*name != '.') || (name[1] != '\0')) {
 		strcpy(fullname, name);
 		if (!endslash)
-		    strcat(fullname, "/");
+		    strlcat(fullname, "/", sizeof(fullname));
 	    }
-	    strcat(fullname, dp->d_name);
+	    strlcat(fullname, dp->d_name, sizeof(fullname));
 	    if (listused >= listsize) {
 		newlist = realloc(list,
 			    ((sizeof(char **)) * (listsize + LISTSIZE)));

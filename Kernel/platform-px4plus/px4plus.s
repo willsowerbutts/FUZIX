@@ -24,6 +24,7 @@
 
             ; exported debugging tools
             .globl _trap_monitor
+            .globl _trap_reboot
             .globl outchar
 
             ; imported symbols
@@ -75,9 +76,10 @@ platform_interrupt_all:
 
 ;
 ;	FIXME: this probably needs to be a new "commondata" area so we can
+;	ROM this correctly
 ;
-_kernel_flag:
-	    .db 1
+_need_resched:
+	    .db 0
 kernel_map:			; Last kernel map we were using
 	    .db 0xA2
 saved_map:			; Saved mapping for IRQ entry/exit

@@ -141,16 +141,16 @@ arg_t _time(void)
 	switch (type) {
 		case 0:
 			rdtime(&t);
-			uput(&t, tvec, sizeof(t));
-			return (0);
+			break;
 		case 1:
-			uput(&t.low, &ticks.full, sizeof(ticks));
-			uzero(&t.high, sizeof(t.high));
-			return 0;
+			t.low = ticks.full;
+			t.high = 0;
+			break;
 		default:
 			udata.u_error = EINVAL;
 			return -1;
 	}
+	return uput(&t, tvec, sizeof(t));
 }
 
 #undef tvec
@@ -213,21 +213,29 @@ arg_t _times(void)
 brk (addr)                       Function 30
 char *addr;
 ********************************************/
-#define addr (char *)udata.u_argn
+#define addr (uaddr_t)udata.u_argn
 
 arg_t _brk(void)
 {
-	/* FIXME: when we start building binaries with the stack embedded in them
-	   they will need a different test.. */
-	/* Don't allow break to be set past user's stack pointer */
-    /*** St. Nitschke allow min. of 512 bytes for Stack ***/
-	if (addr >= (char *) brk_limit()) {
+	/* Don't allow break to be set outside of the range the platform
+	   permits. For most platforms this is within 512 bytes of the
+	   stack pointer
+
+	   FIXME: if we get more complex mapping rule types then we may
+	   need to make this something like  if (brk_valid(addr)) so we
+	   can keep it portable */
+
+	if (addr >= brk_limit()) {
 		kprintf("%d: out of memory\n", udata.u_ptab->p_pid);
 		udata.u_error = ENOMEM;
-		return (-1);
+		return -1;
 	}
-	udata.u_break = (uaddr_t) addr;
-	return (0);
+	/* If we have done a break that gives us more room we must zero
+	   the extra as we no longer guarantee it is clear already */
+	if (addr > udata.u_break)
+		uzero((void *)udata.u_break, addr - udata.u_break);
+	udata.u_break = addr;
+	return 0;
 }
 
 #undef addr
@@ -245,8 +253,6 @@ arg_t _sbrk(void)
 	uaddr_t oldbrk;
 
 	udata.u_argn += (oldbrk = udata.u_break);
-	if ((unsigned) udata.u_argn < oldbrk)
-		return (-1);
 	if (_brk())		/* brk (udata.u_argn) */
 		return (-1);
 
@@ -275,6 +281,8 @@ arg_t _waitpid(void)
 		return (-1);
 	}
 
+	/* FIXME: move this scan into the main loop and also error
+	   on a complete loop finding no matchi for pid */
 	/* See if we have any children. */
 	for (p = ptab; p < ptab_end; ++p) {
 		if (p->p_status && p->p_pptr == udata.u_ptab
@@ -291,7 +299,7 @@ arg_t _waitpid(void)
 		chksigs();
 		if (udata.u_cursig) {
 			udata.u_error = EINTR;
-			return (-1);
+			return -1;
 		}
 		for (p = ptab; p < ptab_end; ++p) {
 			if (p->p_status == P_ZOMBIE
@@ -318,7 +326,8 @@ arg_t _waitpid(void)
 			break;
 		psleep(udata.u_ptab);
 	}
-	return 0;
+	udata.u_error = EINTR;
+	return -1;
 }
 
 #undef pid
@@ -491,7 +500,7 @@ arg_t _kill(void)
 	ptptr p;
 	int f = 0, s = 0;
 
-	if (sig < 0 || sig > 15) {
+	if (sig < 0 || sig >= NSIGS) {
 		udata.u_error = EINVAL;
 		return (-1);
 	}
@@ -551,6 +560,7 @@ setpgrp (void)                    Function 53
 arg_t _setpgrp(void)
 {
 	udata.u_ptab->p_pgrp = udata.u_ptab->p_pid;
+	udata.u_ptab->p_tty = 0;
 	return (0);
 }
 
@@ -571,6 +581,6 @@ _sched_yield (void)              Function 62
 arg_t _sched_yield(void)
 {
 	if (nready > 1)
-		switchin(getproc());
+		switchout();
 	return 0;
 }

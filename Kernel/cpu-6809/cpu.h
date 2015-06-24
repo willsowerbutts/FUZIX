@@ -28,6 +28,10 @@ extern void *memset(void *, int, size_t);
 extern size_t strlen(const char *);
 extern uint16_t swab(uint16_t);
 
+/* 6809 wins on this one! */
+#define	ntohs(x)	(x)
+#define ntohl(x)	(x)
+
 /* 6809 doesn't benefit from making a few key variables in
    non-reentrant functions static */
 #define staticfast	auto
@@ -51,6 +55,9 @@ typedef union {            /* this structure is endian dependent */
 
 #define cpu_to_le16(x)	swab(x)
 #define le16_to_cpu(x)	swab(x)
+#define cpu_to_le32(x)	((((uint32_t)cpu_to_le16((x) & 0xFFFF)) << 16) | \
+				(uint32_t)cpu_to_le16((x) >> 16))
+#define le32_to_cpu(x)	cpu_to_le32(x)
 
 /* Sane behaviour for unused parameters */
 #define used(x)

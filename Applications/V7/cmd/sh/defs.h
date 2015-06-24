@@ -61,8 +61,14 @@
 #define	SYSUMASK	19
 
 /* used for input and output of shell */
+#if 0 /* V7 */
 #define INIO 10
 #define OTIO 11
+#else
+/* FUZIX default is currently 10 fds per proc.. probably should move to 16 */
+#define INIO 8
+#define OTIO 9
+#endif
 
 /*io nodes*/
 #define USERIO	10
@@ -111,7 +117,7 @@ extern ARGPTR gchain;
 #define		BLK(x)	((BLKPTR)(x))
 #define		BYT(x)	((BYTPTR)(x))
 #define		STK(x)	((STKPTR)(x))
-#define		ADR(x)	((char*)(x))
+#define		ADR(x)	((char *)(x))
 
 /* stak stuff */
 #include	"stak.h"
@@ -261,8 +267,6 @@ extern const char badexec[];
 extern const char notfound[];
 extern const char badfile[];
 
-extern address end[];
-
 #include	"ctype.h"
 
 /* args.c */
@@ -272,6 +276,7 @@ extern DOLPTR freeargs(DOLPTR blk);
 extern void clearup(void);
 extern DOLPTR useargs(void);
 /* blok.c */
+void blokinit(void);
 ADDRESS alloc(POS nbytes);
 extern void addblok(POS reqd);
 extern void sh_free(void *ap);
@@ -320,6 +325,7 @@ extern int main(int c, const char *v[]);
 extern void chkpr(char eor);
 extern void settmp(void);
 extern void Ldup(register int fa, register int fb);
+extern void gratuitous_call(void);
 /* name.c */
 extern int syslook(char *w, SYSTAB syswds);
 extern void setlist(register ARGPTR arg, int xp);

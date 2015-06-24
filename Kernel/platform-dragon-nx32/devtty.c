@@ -4,8 +4,10 @@
 #include <stdbool.h>
 #include <devtty.h>
 #include <device.h>
+#include <devfd.h>
 #include <vt.h>
 #include <tty.h>
+#include <graphics.h>
 
 #undef  DEBUG			/* UNdefine to delete debug code sequences */
 
@@ -22,6 +24,9 @@ struct s_queue ttyinq[NUM_DEV_TTY + 1] = {	/* ttyinq[0] is never used */
 	{tbuf1, tbuf1, tbuf1, TTYSIZ, 0, TTYSIZ / 2},
 	{tbuf2, tbuf2, tbuf2, TTYSIZ, 0, TTYSIZ / 2}
 };
+
+uint8_t vtattr_cap = VTA_INVERSE|VTA_UNDERLINE|VTA_ITALIC|VTA_BOLD|
+		     VTA_OVERSTRIKE|VTA_NOCURSOR;
 
 /* tty1 is the screen tty2 is the serial port */
 
@@ -46,8 +51,13 @@ ttyready_t tty_writeready(uint8_t minor)
 
 void tty_putc(uint8_t minor, unsigned char c)
 {
+	irqflags_t irq;
 	if (minor == 1) {
+		/* We need a better way generally to handle keyboard v
+		   VT */
+		irq = di();
 		vtoutput(&c, 1);
+		irqrestore(irq);
 	} else
 		*uart_data = c;	/* Data */
 }
@@ -86,6 +96,7 @@ static uint8_t keyin[8];
 static uint8_t keybyte, keybit;
 static uint8_t newkey;
 static int keysdown = 0;
+/* FIXME: shouldn't COCO shiftmask also differ ??? 0x02 not 0x40 ?? */
 static uint8_t shiftmask[8] = {
 	0, 0x40, 0, 0, 0, 0, 0, 0x40
 };
@@ -139,6 +150,11 @@ static void keyproc(void)
 		}
 		keymap[i] = keyin[i];
 	}
+	if (system_id) { 	/* COCO series */
+	  keybit += 2;
+	  if (keybit > 5)
+	    keybit -= 6;
+        }
 }
 
 #ifdef CONFIG_COCO_KBD
@@ -211,9 +227,50 @@ void platform_interrupt(void)
 		keyproc();
 		if (keysdown < 3 && newkey)
 			keydecode();
+                fd_timer_tick();
 		timer_interrupt();
 	}
 }
 
 /* This is used by the vt asm code, but needs to live at the top of the kernel */
 uint16_t cursorpos;
+
+static struct display display = {
+  256, 192,
+  256, 192,
+  0xFF, 0xFF,		/* For now */
+  FMT_MONO_BW,
+  HW_UNACCEL,
+  0,
+  0,
+  GFX_SETPIXEL|GFX_MAPPABLE,
+  0
+};
+
+static struct videomap displaymap = {
+	0,
+	0,
+	VIDEO_BASE,
+	6 * 1024,
+	0,
+	0,
+	0,
+	MAP_FBMEM|MAP_FBMEM_SIMPLE
+};
+
+/*
+ *	Start by just reporting the 256x192 mode which is memory mapped
+ *	(it's effectively always in our address space). Should really
+ *	support setting graphics into the other modes.
+ */
+int gfx_ioctl(uint8_t minor, uarg_t arg, char *ptr)
+{
+	if (arg >> 8 != 0x03)
+		return vt_ioctl(minor, arg, ptr);
+	if (arg == GFXIOC_GETINFO)
+		return uput(&display, ptr, sizeof(display));
+	if (arg == GFXIOC_MAP)
+		return uput(&displaymap, ptr, sizeof(displaymap));
+	udata.u_error = ENOTTY;
+	return -1;
+}

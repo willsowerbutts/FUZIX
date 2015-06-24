@@ -73,6 +73,19 @@ struct hd_geometry {
 #define HDIO_GETGEO		0x0101
 #define HDIO_GET_IDENTITY	0x0102	/* Not yet implemented anywhere */
 
+/* uadmin */
+
+#define A_SHUTDOWN		1
+#define A_REBOOT		2
+#define A_DUMP			3
+#define A_FREEZE		4	/* Unimplemented, want for NC100 */
+#define A_SWAPCTL		16	/* Unimplemented */
+#define A_CONFIG		17	/* Unimplemented */
+#define A_FTRACE		18	/* Unimplemented:
+                                          Hook to the syscall trace debug */
+
+#define AD_NOSYNC		1	/* Unimplemented */
+
 struct times;
 struct tms;
 struct utimbuf;
@@ -85,8 +98,8 @@ extern int creat(const char *path, mode_t mode);
 extern int mknod(const char *path, mode_t mode, dev_t dev);
 extern int link(const char *path, const char *path2);
 extern int unlink(const char *path);
-extern int read(int fd, char *buf, int len);
-extern int write(int fd, const char *buf, int len);
+extern ssize_t read(int fd, void *buf, int len);
+extern ssize_t write(int fd, const void *buf, int len);
 extern int chdir(const char *path);
 extern int sync(void);
 extern int access(const char *path, int way);
@@ -97,7 +110,7 @@ extern pid_t getpid(void);
 extern pid_t getppid(void);
 extern uid_t getuid(void);
 extern mode_t umask(mode_t);
-extern int execve(const char *path, const char *argv[], const char *envp[]);
+extern int execve(const char *path, char * const argv[], char *const envp[]);
 extern pid_t wait(int *status);
 extern int setuid(uid_t uid);
 extern int setgid(gid_t gid);

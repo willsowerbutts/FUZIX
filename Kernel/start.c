@@ -67,8 +67,11 @@ void create_init(void)
 	init_process = ptab_alloc();
 	udata.u_ptab = init_process;
 	udata.u_top = PROGLOAD + 4096;	/* Plenty for the boot */
+	init_process->p_top = udata.u_top;
 	map_init();
 	newproc(init_process);
+
+	udata.u_insys = 1;
 
 	init_process->p_status = P_RUNNING;
 
@@ -126,12 +129,12 @@ void create_init(void)
 #define BOOTDEVICENAMES "" /* numeric parsing only */
 #endif
 
-uint16_t bootdevice(const char *devname)
+uint16_t bootdevice(const uint8_t *devname)
 {
 	bool match = true;
 	unsigned int b = 0, n = 0;
-	const char *p, *bdn = BOOTDEVICENAMES;
-	char c, pc;
+	const uint8_t *p, *bdn = (const uint8_t *)BOOTDEVICENAMES;
+	uint8_t c, pc;
 
 	/* skip spaces at start of string */
 	while(*devname == ' '){
@@ -191,6 +194,7 @@ uint16_t bootdevice(const char *devname)
 		case 0:
 		case '\n':
 		case '\r':
+		 /* FIXME: space trailing copy the rest into init args */
 		case ' ':
 			break;
 		default:
@@ -206,14 +210,14 @@ uint16_t bootdevice(const char *devname)
 uint16_t get_root_dev(void)
 {
 	uint16_t rd = BAD_ROOT_DEV;
-	char bootline[10];
+	uint8_t bootline[10];
 
 	if (cmdline && *cmdline)
 		rd = bootdevice(cmdline);
 
 	while(rd == BAD_ROOT_DEV){
 		kputs("bootdev: ");
-		udata.u_base = (uint8_t*)&bootline;
+		udata.u_base = bootline;
 		udata.u_sysio = 1;
 		udata.u_count = sizeof(bootline)-1;
 		udata.u_euid = 0;		/* Always begin as superuser */
@@ -302,8 +306,8 @@ void fuzix_main(void)
 
 	kputs("OK\n");
 
-	i_ref(udata.u_cwd = root);
-	i_ref(udata.u_root = root);
+	udata.u_cwd = i_ref(root);
+	udata.u_root = i_ref(root);
 	rdtime32(&udata.u_time);
 	exec_or_die();
 }

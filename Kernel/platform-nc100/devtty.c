@@ -26,6 +26,8 @@ __sfr __at 0xB7 kmap7;
 __sfr __at 0xB8 kmap8;
 __sfr __at 0xB9 kmap9;
 
+uint8_t vtattr_cap;
+
 char tbuf1[TTYSIZ];
 char tbuf2[TTYSIZ];
 
@@ -67,6 +69,8 @@ int nc100_tty_open(uint8_t minor, uint16_t flag)
 int nc100_tty_close(uint8_t minor)
 {
 	tty_close(minor);
+	if (ttydata[minor].users)
+		return 0;
 	if (minor == 2) {
 #ifdef CONFIG_NC200
 		irqen = 0x18;

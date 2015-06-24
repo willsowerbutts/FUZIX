@@ -4,12 +4,12 @@ AR = m6809-unknown-ar
 PLATFORM = 6809
 export PLATFORM
 CC_OPT = -c -Os -I../include -I../include/6502
-# for stuff that gives sdcc nightmares
+# for stuff that gives gcc nightmares
 CC_NOOPT = $(CC_OPT)
 ASM_OPT = -o
 SRC_CRT0 = crt0_$(PLATFORM).s
 OBJ_CRT0 = $(SRC_CRT0:.s=.o)
-SRC_ASM =
+SRC_ASM = setjmp_6809.s ashlsi3_6809.s
 OBJ_ASM = $(SRC_ASM:.s=.o)
 SRC_C =  __argv.c abort.c asctime.c assert.c atexit.c
 SRC_C += bcmp.c bcopy.c bsearch.c bzero.c calloc.c cfree.c clock.c closedir.c
@@ -19,7 +19,7 @@ SRC_C += execl.c execv.c execvp.c exit.c
 SRC_C += fclose.c fflush.c fgetc.c fgetgrent.c fgetpwent.c
 SRC_C += fgetpos.c fgets.c fopen.c fprintf.c fputc.c fputs.c fread.c free.c
 SRC_C += fsetpos.c ftell.c fwrite.c getcwd.c
-SRC_C += getenv.c __getgrent.c getgrgid.c getgrnam.c getopt.c
+SRC_C += getenv.c __getgrent.c getgrgid.c getgrnam.c getloadavg.c getopt.c
 SRC_C += getpw.c __getpwent.c getpwnam.c getpwuid.c gets.c gettimeofday.c
 SRC_C += gmtime.c gmtime_r.c grent.c index.c isatty.c killpg.c
 SRC_C += libintl.c
@@ -27,11 +27,11 @@ SRC_C += localtim.c localtim_r.c lseek.c lsearch.c lstat.c ltoa.c ltostr.c
 SRC_C += malloc.c mkfifo.c mkstemps.c nanosleep.c opendir.c pause.c perror.c
 SRC_C += popen.c printf.c putenv.c putchar_wrapper.c putpwent.c pwent.c qsort.c
 SRC_C += raise.c rand.c readdir.c readlink.c realloc.c regerror.c
-SRC_C += regsub.c remove.c rewind.c rindex.c setbuffer.c setenv.c setjmp.c
+SRC_C += regsub.c remove.c rewind.c rindex.c setbuffer.c setenv.c
 SRC_C += setlocale.c setvbuf.c settimeofday.c sleep.c sprintf.c
 SRC_C += stat.c stdio0.c stime.c
 SRC_C += strcasecmp.c strcasestr.c strdup.c stricmp.c strlcpy.c strncasecmp.c
-SRC_C += strnlen.c strnicmp.c strsep.c strxfrm.c strcoll.c
+SRC_C += strnlen.c strnicmp.c strsep.c strsignal.c strxfrm.c strcoll.c
 SRC_C += strtod.c strtol.c system.c time.c tmpfile.c tmpnam.c ttyname.c
 SRC_C += tzset.c ungetc.c utent.c utimes.c utsname.c
 SRC_C += vfprintf.c vprintf.c wait.c xitoa.c pathconf.c
@@ -59,7 +59,7 @@ OBJ_C = $(SRC_C:.c=.o)
 OBJ_HARD = $(SRC_HARD:.c=.o)
 OBJ_ALL = $(OBJ_ASM) $(OBJ_C) $(OBJ_HARD)
 
-all: syslib$(PLATFORM).lib $(OBJ_CRT0)
+all: syslib$(PLATFORM).lib liberror.txt $(OBJ_CRT0)
 
 libc.l:%.l:$(OBJ_ALL)
 	ls $(OBJ_ALL) > libc.l
@@ -74,9 +74,18 @@ syslib$(PLATFORM).lib: syscall.l libc.l
 	$(AR) -c syslib$(PLATFORM).lib $$(cat syslib.l)
 	ln -sf syslib$(PLATFORM).lib libc$(PLATFORM).a
 
-fuzix$(PLATFORM)/syslib.l:
-	../tools/syscall_$(PLATFORM)
+fuzix$(PLATFORM)/syslib.l: ../tools/syscall_$(PLATFORM)
+	$<
 	make -C fuzix$(PLATFORM)
+
+../tools/syscall_$(PLATFORM): ../tools/syscall_$(PLATFORM).c
+	make -C .. tools/syscall_$(PLATFORM)
+
+liberror.txt: ../tools/liberror
+	$< -X > $@
+
+../tools/liberror: ../tools/liberror.c
+	make -C .. tools/liberror
 
 $(OBJ_ASM):%.o: %.s
 	$(ASM) $(ASM_OPT) $@ $(@:.o=.s)
@@ -92,6 +101,6 @@ $(OBJ_HARD):%.o: %.c
 
 clean:
 	rm -rf *.o *.asm *.sym *.lst *.lib *~ syscall.l libc.l syslib.l \
-	libc$(PLATFORM).a
+	libc$(PLATFORM).a liberror.txt
 	-cd fuzix$(PLATFORM) && make clean
 	rm -rf fuzix$(PLATFORM)/Makefile

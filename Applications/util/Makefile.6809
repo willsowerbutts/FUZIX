@@ -4,7 +4,7 @@ CC = m6809-unknown-gcc
 ASM = m6809-unknown-as
 AR = m6809-unknown-ar
 LINKER = lwlink
-CFLAGS = -Os -I../../Library/include -I../../Library/include/6502
+CFLAGS = -I../../Library/include -I../../Library/include/6502
 LINKER_OPT = --format=raw -L../../Library/libs -lc6809
 LIBGCCDIR = $(dir $(shell $(CC) -print-libgcc-file-name))
 LINKER_OPT += -L$(LIBGCCDIR) -lgcc
@@ -36,6 +36,7 @@ SRCS  = banner.c \
 	du.c \
 	echo.c \
 	ed.c \
+	env.c \
 	factor.c \
 	false.c \
 	fdisk.c \
@@ -66,6 +67,7 @@ SRCS  = banner.c \
 	prtroot.c \
 	ps.c \
 	pwd.c \
+	reboot.c \
 	rm.c \
 	rmdir.c \
 	sed.c \
@@ -78,11 +80,13 @@ SRCS  = banner.c \
 	sync.c \
 	tee.c \
 	tail.c \
+	telinit.c \
 	touch.c \
 	tr.c \
 	true.c \
 	umount.c \
 	uniq.c \
+	uptime.c \
 	uud.c \
 	uue.c \
 	wc.c \
@@ -97,7 +101,7 @@ OBJS = $(SRCS:.c=.o)
 
 APPS = $(OBJS:.o=)
 
-all: $(APPS)
+all: $(APPS) sizes
 
 $(OBJS): $(SRCS)
 
@@ -106,8 +110,11 @@ $(APPS): $(CRT0)
 %: %.o
 	$(LINKER) -o $@ $(LINKER_OPT) $(CRT0) $<
 
+sizes: $(APPS)
+	ls -l $(APPS) > size.report
+
 clean:
-	rm -f $(OBJS) $(APPS) $(SRCS:.c=) core *~ *.asm *.lst *.sym *.map *.noi *.lk *.ihx *.tmp *.bin
+	rm -f $(OBJS) $(APPS) $(SRCS:.c=) core *~ *.asm *.lst *.sym *.map *.noi *.lk *.ihx *.tmp *.bin size.report
 
 rmbak:
 	rm -f *~ core

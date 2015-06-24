@@ -4,6 +4,8 @@
  *	You may freely redistribute this software, in source or binary
  *	form, provided that you do not alter this copyright mention in any
  *	way.
+ *
+ * Stdio usage removed Alan Cox 2015
  */
 
 #include <dirent.h>
@@ -35,7 +37,7 @@ int  rflag, errors;
 struct stat st;
 char path[PATH_MAX + 1];
 
-int main(int argc, char **argv);
+int main(int argc, char *argv[]);
 mode_t parsemode(char *symbolic, mode_t oldmode);
 int do_change(char *name);
 void usage(void);
@@ -258,6 +260,6 @@ int do_change(char *name)
 /* Display Posix prototype */
 void usage(void)
 {
-    fprintf(stderr, "Usage: chmod [-R] mode file...\n");
+    write(2, "Usage: chmod [-R] mode file...\n",31);
     exit(1);
 }

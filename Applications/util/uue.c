@@ -31,7 +31,7 @@ char seqc = SEQMAX;
 int split = 0;
 int fileln = 32000;
 
-int  main(int argc, char **argv);
+int  main(int argc, char *argv[]);
 void maketable(void);
 void makename(void);
 void encode(void);
@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
 
     fname = argv[1] + strlen(argv[1]);
     while (fname > argv[1] && fname[-1] != '/') fname--;
-    strcpy(ofname, fname);
+    strlcpy(ofname, fname, sizeof(ofname));
     fname = ofname;
     do {
 	if (*fname == '.') *fname = '\0';

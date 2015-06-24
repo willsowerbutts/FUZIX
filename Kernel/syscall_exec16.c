@@ -154,6 +154,7 @@ arg_t _execve(void)
 
 	/* From this point on we are commmited to the exec() completing */
 	udata.u_top = top;
+	udata.u_ptab->p_top = top;
 
 	/* setuid, setgid if executable requires it */
 	if (ino->c_node.i_mode & SET_UID)
@@ -193,9 +194,9 @@ arg_t _execve(void)
 		progptr += bin_size;
 	}
 
-	/* Should be smarter on the uzero: bank align the clearance */
-	// zero all remaining process memory above the last block loaded.
-	uzero((uint8_t *)progptr, top - progptr);
+	/* Wipe the memory in the BSS. We don't wipe the memory above
+	   that on 8bit boxes, but defer it to brk/sbrk() */
+	uzero((uint8_t *)progptr, bss);
 
 	udata.u_break = (int) progptr + bss;	//  Set initial break for program
 
@@ -209,7 +210,7 @@ arg_t _execve(void)
 	nenvp = wargs((char *) (nargv), ebuf, NULL);
 
 	// Fill in udata.u_name with Program invocation name
-	uget((void *) ugetw(nargv), udata.u_name, 8);
+	ugets((void *) ugetw(nargv), udata.u_name, 8);
 	memcpy(udata.u_ptab->p_name, udata.u_name, 8);
 
 	brelse(abuf);

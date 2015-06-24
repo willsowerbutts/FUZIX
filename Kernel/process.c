@@ -1,8 +1,10 @@
 #undef DEBUG			/* turn this on to enable syscall tracing */
 #undef DEBUGHARDER		/* report calls to wakeup() that lead nowhere */
 #undef DEBUGREALLYHARD		/* turn on getproc dumping */
+#undef DEBUG_PREEMPT		/* debug pre-emption */
 
 #include <kernel.h>
+#include <tty.h>
 #include <kdata.h>
 #include <printf.h>
 #include <audio.h>
@@ -40,8 +42,11 @@ void psleep(void *event)
 	udata.u_ptab->p_waitno = ++waitno;
 	nready--;
 
-	/* FIXME: we don't want to restore interrupts here, but what
-	   is the consequence */
+	/* It is safe to restore interrupts here. We have already updated the
+	   process state. The worst case is that a wakeup as we switchout
+	   leads us to switch out and back in, or that we wake and run
+	   after other candidates - no different to it occuring after the
+	   switch */
 	irqrestore(irq);
 	switchout();		/* Switch us out, and start another process */
 	/* Switchout doesn't return in this context until we have been switched back in, of course. */
@@ -77,7 +82,7 @@ void wakeup(void *event)
 
 void pwake(ptptr p)
 {
-	if (p->p_status > P_RUNNING) {
+	if (p->p_status > P_RUNNING && p->p_status < P_FORKING) {
 		p->p_status = P_READY;
 		p->p_wait = NULL;
 		nready++;
@@ -267,6 +272,7 @@ ptptr ptab_alloc(void)
 				    && p->p_pid == nextpid)
 					newp->p_pid = 0;	/* try again */
 		}
+		newp->p_top = udata.u_top;
 		if (pagemap_alloc(newp) == 0) {
 			newp->p_status = P_FORKING;
 			nproc++;
@@ -274,6 +280,8 @@ ptptr ptab_alloc(void)
 			udata.u_error = ENOMEM;
 			newp = NULL;
                 }
+                newp->p_pgrp = udata.u_ptab->p_pgrp;
+                memcpy(newp->p_name, udata.u_ptab->p_name, sizeof(newp->p_name));
 	}
 	irqrestore(irq);
 	if (newp)
@@ -289,7 +297,7 @@ void load_average(void)
 	struct runload *r;
 	static uint8_t utick;
 	uint8_t i;
-	uint8_t nr;
+	uint16_t nr;
 
 	utick++;
 	if (utick < 50)
@@ -304,7 +312,7 @@ void load_average(void)
 
 	while (i++ < 3) {
 		r->average = ((((r->average - (nr << 8)) * r->exponent) +
-				(((unsigned long)nr) << 16)) >> 8);
+				(((uint32_t)nr) << 16)) >> 8);
 		r++;
 	}
 }
@@ -351,23 +359,23 @@ void timer_interrupt(void)
 			}
 		}
 		updatetod();
+                load_average();
 #ifdef CONFIG_AUDIO
 		audio_tick();
 #endif
 	}
 #ifndef CONFIG_SINGLETASK
 	/* Check run time of current process */
+        /* Time to switch out? */
 	if ((++runticks >= udata.u_ptab->p_priority)
-	    && !udata.u_insys && inint && nready > 1) {	/* Time to switch out? */
-#ifdef DEBUG
-		kputs("[preempt]");
-		kprintf("Prio = %d\n", udata.u_ptab->p_priority);
+	    && !udata.u_insys && inint && nready > 1) {
+                 need_resched = 1;
+#ifdef DEBUG_PREEMPT
+		kprintf("[preempt %x %d %x]", udata.u_ptab,
+		        udata.u_ptab->p_priority,
+		        *((uint16_t *)0xEAFE));
 #endif
-		udata.u_insys = true;
-		udata.u_ptab->p_status = P_READY;
-		switchout();
-		udata.u_insys = false;	/* We have switched back in */
-	}
+        }
 #endif
 }
 
@@ -375,15 +383,11 @@ void timer_interrupt(void)
 #include "syscall_name.h"
 #endif
 
-extern int16_t kernel_flag;	/* true when in a syscall etc, maintained by the
-				   asm interfaces but visible in C */
-
 // Fuzix system call handler
 // we arrive here from syscall.s with the kernel paged in, using the kernel stack, interrupts enabled.
 void unix_syscall(void)
 {
 	// NO LOCAL VARIABLES PLEASE
-	udata.u_insys = true;
 	udata.u_error = 0;
 
 	/* Fuzix saves the Stack Pointer and arguments in the
@@ -418,14 +422,13 @@ void unix_syscall(void)
 		switchout();
 	}
 	ei();
-	udata.u_insys = false;
 }
 
 void sgrpsig(uint16_t pgrp, uint16_t sig)
 {
 	ptptr p;
 	for (p = ptab; p < ptab_end; ++p) {
-		if (-p->p_pgrp == pgrp)
+		if (p->p_pgrp == pgrp)
 			ssig(p, sig);
 	}
 }
@@ -582,12 +585,20 @@ void doexit(int16_t val, int16_t val2)
 	memcpy(&(udata.u_ptab->p_priority), &udata.u_utime,
 	       2 * sizeof(clock_t));
 
-	/* See if we have any children. Set child's parents to our parent */
 	for (p = ptab; p < ptab_end; ++p) {
-		if (p->p_status && p->p_pptr == udata.u_ptab
-		    && p != udata.u_ptab)
+		if (p->p_status == P_EMPTY || p == udata.u_ptab)
+			continue;
+		/* Set any child's parents to our parent */
+		if (p->p_pptr == udata.u_ptab)
 			p->p_pptr = udata.u_ptab->p_pptr;
+		/* Send SIGHUP to any pgrp members and remove
+		   them from our pgrp */
+                if (p->p_pgrp == udata.u_ptab->p_pid) {
+			p->p_pgrp = 0;
+			ssig(p, SIGHUP);
+		}
 	}
+	tty_exit();
 	irqrestore(irq);
 #ifdef DEBUG
 	kprintf
@@ -597,6 +608,8 @@ void doexit(int16_t val, int16_t val2)
 #ifdef CONFIG_ACCT
 	acctexit(p);
 #endif
+        udata.u_page = 0xFFFFU;
+        udata.u_page2 = 0xFFFFU;
 	/* FIXME: send SIGCLD here */
 	/* FIXME: POSIX.1 says that SIG_IGN for SIGCLD means don't go
 	   zombie, just clean up as we go */

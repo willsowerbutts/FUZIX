@@ -18,6 +18,7 @@
 #include	"timeout.h"
 #include	<sys/types.h>
 #include	<sys/stat.h>
+#include    <setjmp.h>
 
 UFD output = 2;
 static BOOL beenhere = FALSE;
@@ -32,7 +33,10 @@ int main(int c, const char *v[])
 	register int rflag = ttyflg;
 
 	/* initialise storage allocation */
+	blokinit();
+
 	stdsigs();
+
 	setbrk(BRKINCR);
 	addblok((POS) 0);
 
@@ -44,13 +48,12 @@ int main(int c, const char *v[])
 
 	/* look for options */
 	dolc = options(c, v);
-	if (dolc < 2) {
+	if (dolc < 2)
 		flags |= stdflg;
-	}
-	if ((flags & stdflg) == 0) {
+
+	if ((flags & stdflg) == 0)
 		dolc--;
-		;
-	}
+
 	dolv = v + c - dolc;
 	dolc--;
 
@@ -93,7 +96,6 @@ int main(int c, const char *v[])
 //      } else {        *execargs=(char *)dolv; /* for `ps' cmd */
 		;
 	}
-
 	exfile(0);
 	done();
 }
@@ -189,4 +191,8 @@ void Ldup(register int fa, register int fb)
 	dup2(fa, fb);
 	close(fa);
 	fcntl(fb, F_SETFD, FD_CLOEXEC);
+}
+
+void gratuitous_call(void)
+{
 }

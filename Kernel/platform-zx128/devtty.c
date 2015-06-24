@@ -9,6 +9,8 @@
 
 char tbuf1[TTYSIZ];
 
+uint8_t vtattr_cap;
+
 /* buffer for port scan procedure */
 uint8_t keybuf[8];
 /* Previous state */
@@ -169,10 +171,7 @@ static void keydecode(void)
 				c = cursor[c - '5'];
 		}
 	}
-
-
-	if (c != 0)
-		tty_inproc(1, c);
+	tty_inproc(1, c);
 }
 
 
