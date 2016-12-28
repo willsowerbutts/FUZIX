@@ -1,0 +1,61 @@
+#!/bin/bash
+
+ROOTDIR=/home/btg/projects/fuzix
+DATECODE=$1
+
+if [ "x${DATECODE}" == "x" ]; then
+    DATECODE=$(/bin/date +%Y-%m-%d)
+fi
+
+echo "Building distribution $DATECODE"
+DISTREL=fuzix-${DATECODE}
+DISTRIBUTION=${ROOTDIR}/Standalone/distribution/${DISTREL}
+
+if [ -a ${DISTRIBUTION} ]; then
+    echo "Refusing to continue; ${DISTRIBUTION} already exists."
+    echo "Specify a new distribution suffix on the command line."
+    exit 1
+fi
+
+mkdir ${DISTRIBUTION}
+cp $ROOTDIR/Standalone/distribution/README.txt ${DISTRIBUTION}/
+
+# we build our disk image in multiple sections which we later combine -- this
+# prevents us needing to use real partitions which would require root.
+
+# prepare blank CP/M slice at the start of the disk (also includes MBR, boot track)
+./write-e5 ${DISTRIBUTION}/fs-cpm 16640
+echo "16640,82176,5a" | /sbin/sfdisk -u S --force ${DISTRIBUTION}/fs-cpm > /dev/null 2>&1
+
+# prepare the Fuzix filesystem (max possible size)
+dd if=/dev/zero bs=512 count=65536 of=${DISTRIBUTION}/fs-fuzix
+( cd $ROOTDIR/Standalone/filesystem-src; ./build-filesystem ${DISTRIBUTION}/fs-fuzix 256 65535 )
+
+# prepare the Fuzix filesystem (256KB ROM size)
+dd if=/dev/zero bs=512 count=512 of=${DISTRIBUTION}/fs-fuzix-rom
+( cd $ROOTDIR/Standalone/filesystem-src; ./build-filesystem ${DISTRIBUTION}/fs-fuzix-rom 16 512 ./ucp-tiny-script.txt )
+
+zip -9 ${DISTREL}.zip ${DISTREL}/README.txt
+
+# prepare the kernel for each platform
+for TARGET in n8vem-mark4 zeta-v2; do
+    echo "Building kernel for target ${TARGET}"
+    ( cd $ROOTDIR/Kernel; make TARGET=${TARGET} clean; make TARGET=${TARGET} -j4 )
+
+    # platform boot track and CP/M filesystem
+    cp ${DISTRIBUTION}/fs-cpm ${DISTRIBUTION}/fs-cpm-${TARGET}
+    dd if=$ROOTDIR/Kernel/platform-${TARGET}/diskboot.bin bs=446 count=1 conv=notrunc of=${DISTRIBUTION}/fs-cpm-${TARGET}
+    dd if=$ROOTDIR/Kernel/fuzix.bin bs=512 seek=2 conv=notrunc of=${DISTRIBUTION}/fs-cpm-${TARGET}
+    cpmcp -f n8vem_hd0 ${DISTRIBUTION}/fs-cpm-${TARGET} $ROOTDIR/Kernel/platform-${TARGET}/fuzix.com 0:
+
+    # assemble the platform disk image
+    cat ${DISTRIBUTION}/fs-cpm-${TARGET} ${DISTRIBUTION}/fs-fuzix > ${DISTRIBUTION}/disk-${TARGET}.bin
+
+    zip -9 ${DISTREL}.zip ${DISTREL}/disk-${TARGET}.bin
+done
+
+# zeta-v2 supports ROM boot and a ROM filesystem also;
+cat $ROOTDIR/Kernel/platform-zeta-v2/fuzix.rom ${DISTRIBUTION}/fs-fuzix-rom | dd conv=sync bs=524288 count=1 of=${DISTRIBUTION}/zeta-v2.rom
+zip -9 ${DISTREL}.zip ${DISTREL}/zeta-v2.rom
+
+echo "Built distribution in ${DISTREL}.zip"
