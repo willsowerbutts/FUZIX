@@ -25,6 +25,7 @@ libc-functions.localsrcs += \
 	clock_gettime.c \
 	clock_settime.c \
 	closedir.c \
+	closedir_r.c \
 	confstr.c \
 	creat.c \
 	crypt.c \
@@ -45,6 +46,7 @@ libc-functions.localsrcs += \
 	fgetpwent.c \
 	fgets.c \
 	fopen.c \
+	fork.c \
 	fprintf.c \
 	fputc.c \
 	fputs.c \
@@ -71,6 +73,7 @@ libc-functions.localsrcs += \
 	gmtime_r.c \
 	grent.c \
 	index.c \
+	initgroups.c \
 	isalnum.c \
 	isalpha.c \
 	isascii.c \
@@ -101,6 +104,7 @@ libc-functions.localsrcs += \
 	mkstemps.c \
 	nanosleep.c \
 	opendir.c \
+	opendir_r.c \
 	pathconf.c \
 	pause.c \
 	perror.c \
@@ -140,7 +144,6 @@ libc-functions.localsrcs += \
 	strsignal.c \
 	strtod.c \
 	strtol.c \
-	strtol.c \
 	strxfrm.c \
 	sysconf.c \
 	system.c \
@@ -149,6 +152,7 @@ libc-functions.localsrcs += \
 	tcflush.c \
 	tcgetattr.c \
 	tcsetattr.c \
+	telldir.c \
 	time.c \
 	tmpfile.c \
 	tmpnam.c \
@@ -172,6 +176,7 @@ libc-functions.localsrcs += \
     memcmp.c \
     memcpy.c \
     memset.c \
+    seekdir.c \
     strcasecmp.c \
     strcasestr.c \
     strcat.c \
@@ -195,7 +200,6 @@ libc-functions.localsrcs += \
     strspn.c \
     strstr.c \
     strtok.c \
-    strxfrm.c \
 	$(SYSCALL_STUB)
 
 libc-functions.srcs = $(addprefix libs/, \

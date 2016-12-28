@@ -40,7 +40,7 @@ REmatch(char *pattern, int start, int end)
 int PROC
 omatch(char *pattern, char **cp, char *endp)
 {
-    register flag;
+    register int flag;
     extern int ignorecase;
 
     switch (*pattern) {
@@ -87,7 +87,7 @@ omatch(char *pattern, char **cp, char *endp)
     }
     return FALSE;
 }
-	
+
 int PROC
 amatch(char *pattern, char *start, char *endp)
 {
@@ -131,8 +131,8 @@ amatch(char *pattern, char *start, char *endp)
 PROC
 patsize(char **pattern)
 {
-    register count;
-    
+    register int count;
+
     switch (**pattern) {
       case LITCHAR:
 	*pattern += 2;
@@ -154,7 +154,7 @@ locate(char *pattern, char *linep)
 {
     register char *p = 1+pattern;
     register int count;
-    
+
     if ((count = (*p++)&0xff) == 0)
 	return FALSE;
     while (count--)
@@ -245,11 +245,11 @@ char * PROC makepat(char *string, char delim)
 	RE_start[arg] = RE_size[arg] = (-1);
     arg = 0;
     p = pattern;
-    
+
     while ((*string != delim) && (*string != 0)) {
 	oldcp = cp;
 	cp = p;
-	
+
 	if (!magic)		/* kludge for nonmagical patterns */
 	    goto normal;
 	if (*string == ANY)
@@ -397,7 +397,7 @@ findparse(char *src, int *idx, int start) /* driver for ?, /, && : lineranges */
 	    count = 0;
 	    while (*src >= '0' && *src <= '9')
 		count = (count*10) + *(src++) - '0';
-		
+
 	    addr = to_index(count);
 	break;
 	case '$':
@@ -409,7 +409,7 @@ findparse(char *src, int *idx, int start) /* driver for ?, /, && : lineranges */
 	break;
 	case '`':
 	case '\'':
-	    addr = getcontext(*(src+1), (*src == '\''));
+	    addr = lvgetcontext(*(src+1), (*src == '\''));
 	    src += 2;
 	break;
     }
@@ -465,22 +465,22 @@ nextline(bool advance, int dest, int count)
 int PROC
 fseekeol(int origin)
 {
-    return(origin + scan(bufmax-origin-1,'=',EOL,&core[origin]));
+    return(origin + lvscan(bufmax-origin-1,'=',EOL,&core[origin]));
 }
 
 int PROC
 bseekeol(int origin)
 {
-    return(origin + scan(-origin,'=',EOL,&core[origin-1]));
+    return(origin + lvscan(-origin,'=',EOL,&core[origin-1]));
 }
 
 /* get something from the context table */
 
 int PROC
-getcontext(char c, bool begline)
+lvgetcontext(char c, bool begline)
 {
     int i;
-    
+
     if (c == '\'')
 	c = '`';
     if (c >= '`' && c <= 'z')

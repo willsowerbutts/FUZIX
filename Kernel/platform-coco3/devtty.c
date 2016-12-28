@@ -8,26 +8,39 @@
 #include <tty.h>
 #include <devdw.h>
 #include <ttydw.h>
+#include <graphics.h>
+#include <video.h>
 
 #undef  DEBUG			/* UNdefine to delete debug code sequences */
+
+#define VSECT __attribute__((section(".video")))
+#define VSECTD __attribute__((section(".videodata")))
+
+
+/* Default key repeat values, in tenths of seconds */
+#define REPEAT_FIRST 5 /* delay before first repeat */
+#define REPEAT_CONTINUAL 1 /* delay on sucessive repeats */
+
+
+extern uint8_t hz;
 
 
 uint8_t vtattr_cap;
 
 
-char tbuf1[TTYSIZ];   /* console 0 */
-char tbuf2[TTYSIZ];   /* console 1 */
-char tbuf3[TTYSIZ];   /* drivewire VSER 0 */
-char tbuf4[TTYSIZ];   /* drivewire VSER 1 */
-char tbuf5[TTYSIZ];   /* drivewire VSER 2 */
-char tbuf6[TTYSIZ];   /* drivewire VSER 3 */
-char tbuf7[TTYSIZ];   /* drivewire VWIN 0 */
-char tbuf8[TTYSIZ];   /* drivewire VWIN 1 */
-char tbuf9[TTYSIZ];   /* drivewire VWIN 2 */
-char tbufa[TTYSIZ];   /* drivewire VWIN 3 */
+#define tbuf1 (uint8_t *)(0x2000+TTYSIZ*0)
+#define tbuf2 (uint8_t *)(0x2000+TTYSIZ*1)
+#define tbuf3 (uint8_t *)(0x2000+TTYSIZ*2)
+#define tbuf4 (uint8_t *)(0x2000+TTYSIZ*3)
+#define tbuf5 (uint8_t *)(0x2000+TTYSIZ*4)
+#define tbuf6 (uint8_t *)(0x2000+TTYSIZ*5)
+#define tbuf7 (uint8_t *)(0x2000+TTYSIZ*6)
+#define tbuf8 (uint8_t *)(0x2000+TTYSIZ*7)
+#define tbuf9 (uint8_t *)(0x2000+TTYSIZ*8)
+#define tbufa (uint8_t *)(0x2000+TTYSIZ*9)
 
 
-struct s_queue ttyinq[NUM_DEV_TTY + 1] = {	
+struct s_queue ttyinq[NUM_DEV_TTY + 1] = {
 	/* ttyinq[0] is never used */
 	{NULL, NULL, NULL, 0, 0, 0},
 	/* GIME Consoles */
@@ -47,31 +60,157 @@ struct s_queue ttyinq[NUM_DEV_TTY + 1] = {
 
 
 
-static struct pty {
-	unsigned char *base;	/* base of buffer in cpu space */
-	unsigned char *cpos;	/* current location of cursor */
-	unsigned char csave;	/* charactor that is under the cursor */
-	struct vt_switch vt;	/* the vt.o module's state */
-	unsigned int scrloc;	/* location to put into gimme */
+
+struct mode_s{
+	uint8_t vmod;
+	uint8_t vres;
+	uint8_t width;
+	uint8_t height;
+	uint8_t right;
+	uint8_t bottom;
+	struct display *fmod;
 };
 
-static struct pty ptytab[] = {
-	{(unsigned char *) 0xb400, NULL, 0, {0, 0, 0, 0}, 0xb400 / 8},
-	{(unsigned char *) 0xac80, NULL, 0, {0, 0, 0, 0}, 0xac80 / 8}
+
+/* List (array) of all supported modes, as relayed to ioctl */
+static struct display fmodes[] = {
+	{
+		0,               /* Mode  number */
+		80, 25,          /* screen size */
+		80, 25,          /* buffer size */
+		0xFF, 0xFF,	 /* no pan, scroll */
+		FMT_TEXT,        /* this is a text mode */
+		HW_UNACCEL,      /* no acceleration */
+		GFX_PALETTE | 
+		GFX_MULTIMODE |
+		GFX_PALETTE_SET |
+		GFX_TEXT,        /* all the crap we support in this mode */
+		0,               /* Memory size irrelevant */
+		0,               /* supports no graphics commands */
+	},
+	{
+		1,               /* Mode  number */
+		40, 25,          /* screen size */
+		40, 25,          /* buffer size */
+		0xFF, 0xFF,	 /* no pan, scroll */
+		FMT_TEXT,        /* this is a text mode */
+		HW_UNACCEL,      /* no acceleration */
+		GFX_PALETTE | 
+		GFX_MULTIMODE |
+		GFX_PALETTE_SET |
+		GFX_TEXT,        /* all the crap we support in this mode */
+		0,               /* Memory size irrelevant */
+		0,               /* supports no graphics commands */
+	},
+	{
+		2,               /* Mode  number */
+		64, 25,          /* screen size */
+		64, 25,          /* buffer size */
+		0xFF, 0xFF,	 /* no pan, scroll */
+		FMT_TEXT,        /* this is a text mode */
+		HW_UNACCEL,      /* no acceleration */
+		GFX_PALETTE | 
+		GFX_MULTIMODE |
+		GFX_PALETTE_SET |
+		GFX_TEXT,        /* all the crap we support in this mode */
+		0,               /* Memory size irrelevant */
+		0,               /* supports no graphics commands */
+	},
+	{
+		3,               /* Mode  number */
+		32, 25,          /* screen size */
+		32, 25,          /* buffer size */
+		0xFF, 0xFF,	 /* no pan, scroll */
+		FMT_TEXT,        /* this is a text mode */
+		HW_UNACCEL,      /* no acceleration */
+		GFX_PALETTE | 
+		GFX_MULTIMODE |
+		GFX_PALETTE_SET |
+		GFX_TEXT,        /* all the crap we support in this mode */
+		0,               /* Memory size irrelevant */
+		0,               /* supports no graphics commands */
+	},
+	{
+		4,               /* Mode  number */
+		256, 192,        /* screen size */
+		256, 192,        /* buffer size */
+		0xFF, 0xFF,	 /* no pan, scroll */
+		FMT_MONO_WB,     /* for now just B&W */
+		HW_UNACCEL,      /* no acceleration */
+		0,               /* no features */
+		0,               /* Memory size irrelevant */
+		GFX_DRAW|GFX_READ|GFX_WRITE  /* only the basics */
+	}
+};
+
+static struct mode_s mode[5] = {
+	{   0x04, 0x75, 80, 25, 79, 24, &(fmodes[0])  },
+	{   0x04, 0x6d, 40, 25, 39, 24, &(fmodes[1])  },
+	{   0x04, 0x71, 64, 25, 63, 24, &(fmodes[2])  },
+	{   0x04, 0x69, 32, 25, 31, 24, &(fmodes[3])  },
+	{   0x80, 0x08, 40, 21, 39, 20, &(fmodes[4])  },
+};
+
+
+static struct pty ptytab[] VSECTD = {
+	{
+		(unsigned char *) 0x2000, 
+		NULL, 
+		0, 
+		{0, 0, 0, 0}, 
+		0x10000 / 8,
+		0x04,
+		0x74,              /* 80 column */
+		80,
+		25,
+		79,
+		24,
+		&fmodes[0],
+		050
+	},
+	{
+		(unsigned char *) 0x3000, 
+		NULL, 
+		0, 
+		{0, 0, 0, 0}, 
+		0x11000 / 8,
+		0x04,
+		0x6c,              /* 40 column */
+		40,
+		25,
+		39,
+		24,
+		&fmodes[1],
+		050
+	}
 };
 
 
 /* ptr to current active pty table */
-struct pty *curpty = &ptytab[0];
+struct pty *curpty VSECTD = &ptytab[0];
 
 /* current minor for input */
 int curminor = 1;
 
 
+/* Apply settings to GIME chip */
+void apply_gime( int minor ){
+	struct pty *p=&(ptytab[minor-1]);
+	uint16_t s;
+	if( p->vmod & 0x80 )
+		s=0x12000 / 8 ;
+	else s=p->scrloc;		
+	*(volatile uint16_t *) 0xff9d = s;
+	*(volatile uint8_t *) 0xff98 = ( hz & 0x78 )| p->vmod;
+	*(volatile uint8_t *) 0xff99 = p->vres;
+}
+
+
+
 /* A wrapper for tty_close that closes the DW port properly */
 int my_tty_close(uint8_t minor)
 {
-	if (minor > 2 && ttydata[minor].users == 0)
+	if (minor > 2 && ttydata[minor].users == 1)
 		dw_vclose(minor);
 	return (tty_close(minor));
 }
@@ -92,10 +231,12 @@ ttyready_t tty_writeready(uint8_t minor)
 
 void tty_putc(uint8_t minor, unsigned char c)
 {
+	int irq;
 	if (minor > 2 ) {
 		dw_putc(minor, c);
 		return;
 	}
+	irq=di();
 	struct pty *t = curpty;
 	vt_save(&curpty->vt);
 	curpty = &ptytab[minor - 1];
@@ -104,6 +245,7 @@ void tty_putc(uint8_t minor, unsigned char c)
 	vt_save(&curpty->vt);
 	curpty = t;
 	vt_load(&curpty->vt);
+	irqrestore(irq);
 }
 
 void tty_sleeping(uint8_t minor)
@@ -140,6 +282,9 @@ static int keysdown = 0;
 static uint8_t shiftmask[8] = {
 	0, 0, 0, 0x40, 0x40, 0, 0, 0x40
 };
+struct vt_repeat keyrepeat;
+static uint8_t kbd_timer;
+
 
 /* a lookup table to rotate a 0 bit around */
 static uint8_t rbit[8] = {
@@ -204,9 +349,9 @@ uint8_t keyboard[8][7] = {
 	,
 	{'d', 'l', 't', '|' /* down */ , '4', ',', 0 /* NC */ }
 	,
-	{'e', 'm', 'u', KEY_BS /* left */ , '5', '-', '~' /* NC */ }
+	{'e', 'm', 'u', KEY_BS /* left */ , '5', '-', '~' /* F1 */ }
 	,
-	{'f', 'n', 'v', KEY_TAB /* right */ , '6', '.', 0 /* NC */ }
+	{'f', 'n', 'v', KEY_TAB /* right */ , '6', '.', '`' /* F2 */ }
 	,
 	{'g', 'o', 'w', ' ', '7', '/', 0 /* shift */ }
 	,
@@ -223,9 +368,9 @@ uint8_t shiftkeyboard[8][7] = {
 	,
 	{'D', 'L', 'T', ']' /* down */ , '$', '<', 0 /* NC */ }
 	,
-	{'E', 'M', 'U', '{' /* left */ , '%', '=', '|' /* NC */ }
+	{'E', 'M', 'U', '{' /* left */ , '%', '=', '|' /* F1 */ }
 	,
-	{'F', 'N', 'V', '}' /* right */ , '&', '>', 0 /* NC */ }
+	{'F', 'N', 'V', '}' /* right */ , '&', '>', 0 /* F2 */ }
 	,
 	{'G', 'O', 'W', ' ', '\'', '?', 0 /* shift */ }
 	,
@@ -287,18 +432,18 @@ static void keydecode(void)
 		if (c == '1') {
 			vt_save(&curpty->vt);
 			curpty = &ptytab[0];
-			*(unsigned int *) 0xff9d = curpty->scrloc;
 			vt_load(&curpty->vt);
 			curminor = 1;
+			apply_gime( 1 );
 			return;
 		}
 		/* control + 2 */
 		if (c == '2') {
 			vt_save(&curpty->vt);
 			curpty = &ptytab[1];
-			*(unsigned int *) 0xff9d = curpty->scrloc;
 			vt_load(&curpty->vt);
 			curminor = 2;
+			apply_gime( 2 );
 			return;
 		}
 		/* control + something else */
@@ -313,74 +458,97 @@ void platform_interrupt(void)
 	*pia_col;
 	newkey = 0;
 	keyproc();
-	if (keysdown < 3 && newkey)
-		keydecode();
+	if (keysdown && (keysdown < 3) ){
+		if(newkey){
+			keydecode();
+			kbd_timer = keyrepeat.first;
+		}
+		else{
+			if( ! --kbd_timer ){
+				keydecode();
+				kbd_timer = keyrepeat.continual;
+			}
+		}
+	}
 	timer_interrupt();
 	dw_vpoll();
 }
 
-
-
-
-/* These are routines stolen from the stock vt.c's VT_SIMPLE code, and modified
-   to suite multiple vts
-*/
-
-
-static uint8_t *char_addr(unsigned int y1, unsigned char x1)
+void vtattr_notify(void)
 {
-	return curpty->base + VT_WIDTH * y1 + (uint16_t) x1;
+	curpty->attr = ((vtink&7)<<3) + (vtpaper&7);
 }
 
-void cursor_off(void)
+int gfx_ioctl(uint8_t minor, uarg_t arg, char *ptr)
 {
-	if (curpty->cpos)
-		*curpty->cpos = curpty->csave;
-}
+	if ( minor > 2 )	/* remove once DW get its own ioctl() */
+		return tty_ioctl(minor, arg, ptr);
+	if (arg >> 8 != 0x03)
+		return vt_ioctl(minor, arg, ptr);
+	switch( arg ){
+	case GFXIOC_GETINFO:
+		return uput( ptytab[minor-1].fdisp, ptr, sizeof( struct display));
+	case GFXIOC_GETMODE:
+		{
+			uint8_t m=ugetc(ptr);
+			if( m > 4 ) goto inval;
+			return uput( &fmodes[m], ptr, sizeof( struct display));
+		}
+	case GFXIOC_SETMODE:
+		{
+			uint8_t m=ugetc(ptr);
+			if( m > 4 ) goto inval;
+			memcpy( &(ptytab[minor-1].vmod), &(mode[m]), sizeof( struct mode_s ) );
+			if( minor == curminor ) apply_gime( minor );
+			return 0;
+		}
+	case GFXIOC_DRAW:
+	case GFXIOC_WRITE:
+	case GFXIOC_READ:
+		{
+			int err;
+			err = gfx_draw_op(arg, ptr);
+			if (err) {
+				udata.u_error = err;
+				err = -1;
+			}
+			return err;
+		}
+	default:
+		break;
+	}
 
-void cursor_on(int8_t y, int8_t x)
-{
-	curpty->csave = *char_addr(y, x);
-	curpty->cpos = char_addr(y, x);
-	*curpty->cpos = VT_MAP_CHAR('_');
-}
+	udata.u_error = ENOTTY;
+	return -1;
 
-void plot_char(int8_t y, int8_t x, uint16_t c)
-{
-	*char_addr(y, x) = VT_MAP_CHAR(c);
-}
-
-void clear_lines(int8_t y, int8_t ct)
-{
-	unsigned char *s = char_addr(y, 0);
-	memset(s, ' ', ct * VT_WIDTH);
-}
-
-void clear_across(int8_t y, int8_t x, int16_t l)
-{
-	unsigned char *s = char_addr(y, x);
-	memset(s, ' ', l);
-}
-
-/* FIXME: these should use memmove */
-
-void scroll_up(void)
-{
-	memcpy(curpty->base, curpty->base + VT_WIDTH,
-	       VT_WIDTH * VT_BOTTOM);
-}
-
-void scroll_down(void)
-{
-	memcpy(curpty->base + VT_WIDTH, curpty->base,
-	       VT_WIDTH * VT_BOTTOM);
+inval:	udata.u_error = EINVAL;
+	return -1;
 }
 
 
-unsigned char vt_map(unsigned char c)
+/* Initial Setup stuff down here. */
+
+uint8_t rgb_def_pal[16]={
+	0, 8, 32, 40, 16, 24, 48, 63,
+	0, 8, 32, 40, 16, 24, 48, 63
+};
+
+__attribute__((section(".discard")))
+void devtty_init()
 {
-	/* The CoCo3's gime has a strange code for underscore */
-	if (c == '_')
-		return 0x7F;
-	return c;
+	int i;
+	int defmode=0;
+	/* set default keyboard delay/repeat rates */
+	keyrepeat.first = REPEAT_FIRST * (TICKSPERSEC/10);
+	keyrepeat.continual = REPEAT_CONTINUAL * (TICKSPERSEC/10);
+	/* scan cmdline for params for vt */
+
+       	/* apply default/cmdline mode to terminal structs */
+	for( i=0; i<2; i++){
+		memcpy( &(ptytab[i].vmod), &(mode[defmode]), sizeof( struct mode_s ) );
+	}
+	apply_gime( 1 );    /* apply initial tty1 to regs */
+	/* make video palettes match vt.h's definitions. */
+	memcpy( (uint8_t *)0xffb0, rgb_def_pal, 16 );
 }
+

@@ -79,7 +79,7 @@ int makedname(char *d, char *f, char *out, int outlen)
     int length;
 
     length = strlen(f);
-    if (strlen(d) + length + 2 > outlen) return (0);
+    if (strlen(d) + length + 2 > outlen) return 0;
     for (cp = out; *d; *cp++ = *d++) ;
     if (*(cp - 1) != '/') *cp++ = '/';
     while (length--) *cp++ = *f++;
@@ -129,7 +129,7 @@ long dodir(char *d, int thislev, dev_t dev)
     int  maybe_print;
     struct stat s;
     long total;
-    DIR  *dp;
+    DIR  dir;
     struct dirent *entry;
     static char dent[LINELEN];
 
@@ -155,8 +155,8 @@ long dodir(char *d, int thislev, dev_t dev)
 	 * directory should not already have been done.
 	 */
 	maybe_print = !silent;
-	if ((dp = opendir(d)) == NULL) break;
-	while ((entry = readdir(dp)) != NULL) {
+	if (opendir_r(&dir, d) == NULL) break;
+	while ((entry = readdir(&dir)) != NULL) {
 	    if (strcmp(entry->d_name, ".") == 0 ||
 		strcmp(entry->d_name, "..") == 0)
 		continue;
@@ -164,7 +164,7 @@ long dodir(char *d, int thislev, dev_t dev)
 		continue;
 	    total += dodir(dent, thislev - 1, s.st_dev);
 	}
-	closedir(dp);
+	closedir_r(&dir);
 	break;
 
     case S_IFBLK:
@@ -223,6 +223,5 @@ int main(int argc, char *argv[])
 	dodir(startdir, levels, 0);
     } while (optind < argc);
 
-    return (0);
+    return 0;
 }
-

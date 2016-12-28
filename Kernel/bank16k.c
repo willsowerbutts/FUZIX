@@ -18,6 +18,8 @@
  *	PROGTOP		first byte above process space
  *
  *	Page numbers must not include 0 (0 is taken as swapped)
+ *
+ *	SWAPBASE must be in the low 16K bank
  */
 #include <kernel.h>
 #include <kdata.h>
@@ -38,7 +40,7 @@ static unsigned char pfptr = 0;
 void pagemap_add(uint8_t page)
 {
 	if (pfptr == MAX_MAPS)
-		panic("map over");
+		panic(PANIC_MAPOVER);
 	pfree[pfptr++] = page;
 }
 
@@ -107,52 +109,59 @@ int pagemap_alloc(ptptr p)
 /*
  *	Reallocate the maps for a process
  */
-int pagemap_realloc(uint16_t size)
+int pagemap_realloc(usize_t size)
 {
-	int have = maps_needed(udata.u_top);
-	int want = maps_needed(size);
+	int8_t have = maps_needed(udata.u_top);
+	int8_t want = maps_needed(size);
 	uint8_t *ptr = (uint8_t *) & udata.u_page;
-	int i;
+	int8_t i;
+	uint8_t update = 0;
 	irqflags_t irq;
 
 	/* If we are shrinking then free pages and propogate the
 	   common page into the freed spaces */
 	if (want == have)
 		return 0;
-	if (have > want) {
-		for (i = want; i < have; i++) {
-			pfree[pfptr++] = ptr[i];
-			ptr[i] = ptr[3];
-		}
-		udata.u_ptab->p_page = udata.u_page;
-		udata.u_ptab->p_page2 = udata.u_page2;
-		return 0;
-	}
 
-	/* If we are adding then just insert the new pages, keeping the common
-	   unchanged at the top */
-	if (want - have > pfptr)
-		return ENOMEM;
 	/* We don't want to take an interrupt here while our page mappings are
 	   incomplete. We may restore bogus mappings and then take a second IRQ
 	   into hyperspace */
-        irq = di();
+	irq = __hard_di();
 
-	for (i = have; i < want; i++)
-		ptr[i - 1] = pfree[--pfptr];
+	if (have > want) {
+		/* FIXME: swapout handling is needed ahead of this */
+		for (i = want; i < have; i++) {
+			pfree[pfptr++] = ptr[i - 1];
+			ptr[i - 1] = ptr[3];
+		}
+		/* We collapsed top and bottom, so we need to sort our vectors
+		   and common space out */
+		if (want == 1)
+			update = 1;
+	} else if (want - have <= pfptr) {
+		/* If we are adding then just insert the new pages, keeping the common
+		   unchanged at the top */
+		for (i = have; i < want; i++)
+			ptr[i - 1] = pfree[--pfptr];
+		update = 1;
+
+	} else {
+		__hard_irqrestore(irq);
+		return ENOMEM;
+	}
 	/* Copy the updated allocation into the ptab */
 	udata.u_ptab->p_page = udata.u_page;
 	udata.u_ptab->p_page2 = udata.u_page2;
 	/* Now fix the vectors up - they've potentially teleported up to 48K up
 	   the user address space, we need to put a copy back in low memory before
 	   we switch to this memory map */
-	program_vectors(&udata.u_page);
-
-	irqrestore(irq);
+	if (update)
+		program_vectors(&udata.u_page);
+	__hard_irqrestore(irq);
 	return 0;
 }
 
-uint16_t pagemap_mem_used(void)
+usize_t pagemap_mem_used(void)
 {
 	return pfptr << 4;
 }
@@ -175,10 +184,10 @@ int swapout(ptptr p)
 	uint16_t base = SWAPBASE;
 	uint16_t size = (0x4000 - SWAPBASE) >> 9;
 	uint16_t i;
-	uint8_t *pt = (uint8_t *)&p->p_page;
+	uint8_t *pt = (uint8_t *) & p->p_page;
 
-	if (page)
-		panic("process already swapped!\n");
+	if (!page)
+		panic(PANIC_ALREADYSWAP);
 #ifdef DEBUG
 	kprintf("Swapping out %x (%d)\n", p, p->p_page);
 #endif
@@ -189,13 +198,15 @@ int swapout(ptptr p)
 		return ENOMEM;
 	blk = map * SWAP_SIZE;
 	/* Write the app (and possibly the uarea etc..) to disk */
-	for (i = 0; i < 4; i ++) {
-		swapwrite(SWAPDEV, blk, size, base, *pt++);
+	for (i = 0; i < 4; i++) {
+		swapwrite(SWAPDEV, blk, size << 9, base, *pt++);
 		base += 0x4000;
+		base &= 0xC000;	/* Snap to bank alignment */
+		blk += size;
 		/* Last bank is determined by SWAP SIZE. We do the maths
 		   in 512's (0x60 = 0xC000) */
-		if (i == 3)
-			size = SWAP_SIZE - 0x60;
+		if (i == 2)
+			size = SWAP_SIZE + (SWAPBASE >> 9) - 0x60;
 		else
 			size = 0x20;
 	}
@@ -220,7 +231,7 @@ void swapin(ptptr p, uint16_t map)
 	uint16_t base = SWAPBASE;
 	uint16_t size = (0x4000 - SWAPBASE) >> 9;
 	uint16_t i;
-	uint8_t *pt = (uint8_t *)&p->p_page;
+	uint8_t *pt = (uint8_t *) & p->p_page;
 
 #ifdef DEBUG
 	kprintf("Swapin %x, %d\n", p, p->p_page);
@@ -230,13 +241,15 @@ void swapin(ptptr p, uint16_t map)
 		return;
 	}
 
-	for (i = 0; i < 4; i ++) {
-		swapread(SWAPDEV, blk, size, base, *pt++);
+	for (i = 0; i < 4; i++) {
+		swapread(SWAPDEV, blk, size << 9, base, *pt++);
 		base += 0x4000;
+		base &= 0xC000;
+		blk += size;
 		/* Last bank is determined by SWAP SIZE. We do the maths
 		   in 512's (0x60 = 0xC000) */
-		if (i == 3)
-			size = SWAP_SIZE - 0x60;
+		if (i == 2)
+			size = SWAP_SIZE + (SWAPBASE >> 9) - 0x60;
 		else
 			size = 0x20;	/* 16 K */
 	}

@@ -1,0 +1,50 @@
+#
+#	IntCode engine
+#
+
+CC = gcc
+CFLAGS =
+
+.SUFFIXES: .c .o
+
+
+SRCS  = icint.c blib.c
+OBJS = $(SRCS:.c=.o) blibv.o icintv.o
+
+APPS = icint icintv run-time.i codegen.i b.i
+
+all: $(APPS) sizes
+
+$(OBJS): $(SRCS)
+
+icintv.o: icint.c
+	$(CC) -c -DPAGEDMEM -o icintv.o icint.c
+
+blibv.o: blib.c
+	$(CC) -c -DPAGEDMEM -o blibv.o blib.c
+
+$(APPS): $(CRT0)
+
+icint:  icint.o blib.o
+	$(CC) -o $@ icint.o blib.o
+
+icintv: icintv.o blibv.o
+	$(CC) -o $@ icintv.o blibv.o
+
+sizes: $(APPS)
+	ls -l $(APPS) > size.report
+
+run-time.i: blib16.i
+	cat blib16.i iclib.i > run-time.i
+
+codegen.i:  cg.i run-time.i
+	cat cg.i run-time.i > codegen.i
+
+b.i:    syn.i trn.i run-time.i
+	cat syn.i trn.i run-time.i > b.i
+
+clean:
+	rm -f $(OBJS) $(APPS) $(SRCS:.c=) core *~ *.rel *.asm *.lst *.sym *.map *.noi *.lk *.ihx *.tmp *.bin size.report
+
+rmbak:
+	rm -f *~ core

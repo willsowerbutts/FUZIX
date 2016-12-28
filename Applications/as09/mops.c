@@ -14,10 +14,10 @@
 #define is8bitsignedoffset(offset) ((offset_t) (offset) + 0x80 < 0x100)
 #define pass2 (pass==last_pass)
 
-static void mshort2 P((void));
-static reg_pt regchk P((void));
-static void reldata P((void));
-static void segadj P((void));
+static void mshort2(void);
+static reg_pt regchk(void);
+static void reldata(void);
+static void segadj(void);
 
 #ifdef I80386
 
@@ -2790,6 +2790,7 @@ void mswap(void)
 		error(ILLREG);	/* registers not of same size */
 	}
     }
+    getsym();
 }
 
 /* PSHU and PULU */
@@ -2812,8 +2813,7 @@ void predec1(void)
 
 /* common routine for PSHS/PULS/PSHU/PULU */
 
-void sustack(stackreg)
-reg_pt stackreg;
+void sustack(reg_pt stackreg)
 {
     reg_pt reg;
 

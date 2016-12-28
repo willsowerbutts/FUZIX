@@ -2,6 +2,7 @@
 #include <version.h>
 #include <kdata.h>
 #include <printf.h>
+#include <userstructs.h>
 
 void updoff(void)
 {
@@ -35,7 +36,7 @@ arg_t _lseek(void)
 	if ((ino = getinode(file)) == NULLINODE)
 		return (-1);
 
-	if (getmode(ino) == F_PIPE) {
+	if (getmode(ino) == MODE_R(F_PIPE)) {
 		udata.u_error = ESPIPE;
 		return (-1);
 	}
@@ -79,21 +80,7 @@ bad:
 
 arg_t _sync(void)
 {
-	inoptr ino;
-
-	/* Write out modified inodes */
-
-	for (ino = i_tab; ino < i_tab + ITABSIZE; ++ino)
-		if (ino->c_refs > 0 && (ino->c_flags & CDIRTY)) {
-			wr_inode(ino);
-			ino->c_flags &= ~CDIRTY;
-			/* WRS: also call d_flush(ino->c_dev) here? */
-		}
-
-        /* This now also indirectly does the superblocks as they
-           are buffers that are pinned */
-	bufsync();		/* Clear buffer pool */
-
+	sync();
 	return 0;
 }
 
@@ -148,9 +135,17 @@ arg_t _fstat(void)
 /* Utility for stat and fstat */
 int stcpy(inoptr ino, char *buf)
 {
-	int err = uput((char *) &(ino->c_dev), buf, 12);
-	err |= uput((char *) &(ino->c_node.i_addr[0]), buf + 12, 2);
-	err |= uput((char *) &(ino->c_node.i_size), buf + 14, 16);
+	/* Copying the structure a member at a time is too expensive.  Instead we
+	 * copy sequential runs of identical types (the only members which the
+	 * compiler guarantees are next to each other). */
+
+	uint32_t zero = 0;
+	struct _uzistat* st = (struct _uzistat*) buf;
+	int err = uput(&ino->c_dev,            &st->st_dev,   2 * sizeof(uint16_t));
+	err |=    uput(&ino->c_node.i_mode,    &st->st_mode,  4 * sizeof(uint16_t));
+	err |=    uput(&ino->c_node.i_addr[0], &st->st_rdev,  1 * sizeof(uint16_t));
+	err |=    uput(&ino->c_node.i_size,    &st->st_size,  4 * sizeof(uint32_t));
+	err |=    uput(&zero,                  &st->st_timeh, 1 * sizeof(uint32_t));
 	return err;
 }
 
@@ -256,29 +251,29 @@ arg_t _ioctl(void)
 {
 	inoptr ino;
 	uint16_t dev;
+	uint8_t rclass = ((uint8_t)(request >> 8)) & 0xC0;
+	struct oft *oftp;
 
 	if ((ino = getinode(fd)) == NULLINODE)
 		return -1;
 
-	if (!(isdevice(ino))) {
+	oftp = of_tab + udata.u_files[fd];
+
+	if (!(isdevice(ino)) || rclass == IOCTL_CLASS_KERNEL) {
 		udata.u_error = ENOTTY;
 		return -1;
 	}
 
-	if ((request & IOCTL_SUPER) && esuper())
+	if (rclass == IOCTL_CLASS_SUPER && esuper())
 	        return -1;
-
-	if (!(getperm(ino) & OTH_WR)) {
+	if (rclass == IOCTL_CLASS_WRONLY && O_ACCMODE(oftp->o_access) == O_RDONLY) {
 		udata.u_error = EPERM;
 		return -1;
 	}
 
 	dev = ino->c_node.i_addr[0];
 
-	/* top bit of request is reserved for kernel originated magic */
-	if (d_ioctl(dev, request & 0x7FFF, data))
-		return -1;
-	return (0);
+	return d_ioctl(dev, request, data);
 }
 
 #undef fd
@@ -342,6 +337,8 @@ arg_t _pipe(void)
 	++ino->c_refs;
 	ino->c_node.i_mode = F_PIPE | 0777;	/* No permissions necessary on pipes */
 	ino->c_node.i_nlink = 0;	/* a pipe is not in any directory */
+	ino->c_readers++;
+	ino->c_writers++;
 
 	// write results to userspace
 	uputw(u1, fildes);
@@ -364,28 +361,6 @@ char *path;
 ********************************************/
 #define path (char *)udata.u_argn
 
-/* Helper for the bits shared with rename */
-arg_t unlinki(inoptr ino, inoptr pino, char *fname)
-{
-	if (getmode(ino) == F_DIR) {
-		udata.u_error = EISDIR;
-		return -1;
-	}
-
-	/* Remove the directory entry (ch_link checks perms) */
-	if (!ch_link(pino, fname, "", NULLINODE))
-		return -1;
-
-	/* Decrease the link count of the inode */
-	if (!(ino->c_node.i_nlink--)) {
-		ino->c_node.i_nlink += 2;
-		kprintf("_unlink: bad nlink\n");
-	}
-	setftime(ino, C_TIME);
-	return (0);
-}
-
-/* kind of pinned here by unlinki() */
 arg_t _unlink(void)
 {
 	inoptr ino;
@@ -428,7 +403,12 @@ arg_t _read(void)
 	uint8_t flag;
 
 	if (!nbytes)
-	        return 0;
+		return 0;
+
+	if ((ssize_t)nbytes < 0) {
+		udata.u_error = EINVAL;
+	        return -1;
+	}
 
 	if (!valaddr(buf, nbytes))
 	        return -1;
@@ -491,7 +471,12 @@ arg_t _write(void)
 	uint8_t flag;
 
 	if (!nbytes)
-	        return 0;
+		return 0;
+
+	if ((ssize_t)nbytes < 0) {
+		udata.u_error = EINVAL;
+	        return -1;
+	}
 
 	if (!valaddr(buf, nbytes))
 	        return -1;
@@ -509,3 +494,12 @@ arg_t _write(void)
 #undef buf
 #undef nbytes
 
+/*******************************************
+nosys ()                   Function: various
+********************************************/
+
+arg_t _nosys(void)
+{
+        udata.u_error = ENOSYS;
+        return -1;
+}

@@ -76,7 +76,7 @@ static struct mem *mem_alloc(void)
 			return p;
 		}
 	}
-	panic("mem_alloc: leak");
+	panic(PANIC_MLEAK);
 }
 
 static void *kdup(void *p, void *e)
@@ -196,7 +196,7 @@ void pagemap_switch(ptptr p)
 	/* Take over the correctly mapped copy */
 	store[proc] = mem[proc];
 	/* Exchange the actual data */
-//FIXME	mem_switch(proc);
+	/* FIXME: mem_switch(proc); */
 	/* Admit to owning it */
 	mem[proc]->last = p;
 }
@@ -242,7 +242,7 @@ int pagemap_realloc(usize_t size)
 
 	mb->start = kmalloc(size);
 	mb->end = mb->start + size;
-	if (mb->end == NULL)
+	if (mb->start == NULL)
 		return ENOMEM;
 	return 0;
 }
@@ -254,7 +254,7 @@ unsigned long pagemap_mem_used(void)
 
 /* Extra helper for exec32 */
 
-void *pagemap_base(void)
+uaddr_t pagemap_base(void)
 {
 	unsigned int proc = udata.u_page;
 	return mem[proc]->memblk[0].start;

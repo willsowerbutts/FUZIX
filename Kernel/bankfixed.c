@@ -51,7 +51,7 @@ void pagemap_add(uint8_t page)
 void pagemap_free(ptptr p)
 {
 	if (p->p_page == 0)
-		panic("free0");
+		panic(PANIC_FREE0);
 	pfree[pfptr++] = p->p_page;
 }
 
@@ -69,14 +69,14 @@ int pagemap_alloc(ptptr p)
 }
 
 /* Realloc is trivial - we can't do anything useful */
-int pagemap_realloc(uint16_t size)
+int pagemap_realloc(usize_t size)
 {
 	if (size > MAP_SIZE)
 		return ENOMEM;
 	return 0;
 }
 
-uint16_t pagemap_mem_used(void)
+usize_t pagemap_mem_used(void)
 {
 	return (pfmax - pfptr) * (MAP_SIZE >> 10);
 }
@@ -96,7 +96,7 @@ int swapout(ptptr p)
 	uint16_t map;
 
 	if (!page)
-		panic("process already swapped!\n");
+		panic(PANIC_ALREADYSWAP);
 #ifdef DEBUG
 	kprintf("Swapping out %x (%d)\n", p, p->p_page);
 #endif

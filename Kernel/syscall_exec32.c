@@ -1,6 +1,25 @@
 /*
  *	Implement binary loading for 32bit platforms. We use the ucLinux binflat
  *	format with a simple magic number tweak to avoid confusion with ucLinux
+ *
+ *	TODO: Right now we do a classic bss/stack layout and dont' support
+ *	fixed stack/expanding BSS, multiple segment loaders for flat binaries
+ *	etc. We really ought to pick a saner format. There's much to be said
+ *	for a.out with relocs over flat, or relocs packed into BSS and letting
+ *	user space do the relocs (so anything that overflows or gets it wrong
+ *	goes bang the right side of the kernel/user boundary). The a.out
+ *	standard relocs are 8bytes each so a packed reloc from user space
+ *	would be far better. That might also be the best way to handle
+ *	shared code segment designs (aka 'resident' in Amiga speak)
+ *
+ *	Note: bFLT is actually broken by design for the corner case of
+ *	splitting the code and data segment into two loads, when a binary
+ *	computes an address that is a negative offset from the data segment
+ *	(eg when biasing the start of an array)
+ *
+ *	FIXME: we should set the stack to the top of the available space
+ *	we get allocated not just rely on the stack allocation given. For
+ *	that we need a way to query the space available.
  */
 
 #include <kernel.h>
@@ -9,7 +28,9 @@
 #include <kdata.h>
 #include <printf.h>
 
-#define ARGBUF_SIZE	2048
+/* FIXME: we need to put this back on boxes with a malloc but for now
+   lets keep it easy */
+#define ARGBUF_SIZE	512
 
 struct binfmt_flat {
 	uint8_t magic[4];
@@ -61,18 +82,26 @@ static void close_on_exec(void)
 
 static int valid_hdr(inoptr ino, struct binfmt_flat *bf)
 {
+	if (bf->stack_size < 32768)
+		bf->stack_size = 32768;
 	if (bf->rev != 4)
 		return 0;
 	if (bf->entry >= bf->data_start)
 		return 0;
 	if (bf->data_start > bf->data_end)
 		return 0;
-	if (bf->data_end < bf->bss_end)
+	if (bf->data_end > bf->bss_end)
 		return 0;
 	if (bf->bss_end + bf->stack_size < bf->bss_end)
 		return 0;
 	if (bf->data_end > ino->c_node.i_size)
 		return 0;
+	/* Revisit this for other ports. Avoid alignment traps */
+	if ((bf->data_start | bf->data_end | bf->bss_end | bf->entry) & 1)
+		return 0;
+	/* Fix up the BSS so that it's big enough to hold the relocations
+	   FIXME: this is a) ugly and b) overcautious as we should factor
+	   in the stack space too */
 	if (bf->bss_end - bf->data_end < 4 * bf->reloc_count)
 		bf->bss_end = bf->data_end + 4 * bf->reloc_count;
 	if (bf->reloc_start + bf->reloc_count * 4 > ino->c_node.i_size ||
@@ -85,14 +114,15 @@ static int valid_hdr(inoptr ino, struct binfmt_flat *bf)
 
 /* For now we load the binary in one block, including code/data/bss. We can
    look at better formats, split binaries etc later maybe */
-static void relocate(struct binfmt_flat *bf, void *progbase, uint32_t size)
+static void relocate(struct binfmt_flat *bf, uaddr_t progbase, uint32_t size)
 {
-	uint32_t *rp = progbase + bf->reloc_start;
+	uint32_t *rp = (uint32_t *)(progbase + bf->reloc_start);
 	uint32_t n = bf->reloc_count;
 	while (n--) {
 		uint32_t v = *rp++;
 		if (v < size && !(v&1))	/* Revisit for non 68K */
-			*((uint32_t *)(rp + v)) += (uint32_t)progbase;
+			/* FIXME: go via user access methods */
+			*((uint32_t *)(progbase + 0x40 + v)) += progbase + 0x40;
 	}
 }
 
@@ -118,8 +148,9 @@ arg_t _execve(void)
 	struct s_argblk *abuf, *ebuf;
 	int argc;
 	uint32_t bin_size;	/* Will need to be bigger on some cpus */
-	void *progbase, *top;
+	uaddr_t progbase, top;
 	uaddr_t go;
+	uint32_t true_brk;
 
 	if (!(ino = n_open(name, NULLINOPTR)))
 		return (-1);
@@ -141,10 +172,13 @@ arg_t _execve(void)
 	/* Read in the first block of the new program */
 	buf = bread(ino->c_dev, bmap(ino, 0, 1), 0);
 	binflat = (struct binfmt_flat *)buf;
+	
+	/* FIXME: ugly - save this as valid_hdr modifies it */
+	true_brk = binflat->bss_end;
 
 	/* Hard coded for our 68K format. We don't quite use the ucLinux
 	   names, we don't want to load a ucLinux binary in error! */
-	if (buf == NULL || memcmp(buf, "bF68", 4) ||
+	if (buf == NULL || memcmp(buf, "bFLT", 4) ||
 		!valid_hdr(ino, binflat)) {
 		udata.u_error = ENOEXEC;
 		goto nogood2;
@@ -153,19 +187,16 @@ arg_t _execve(void)
 	/* Memory needed */
 	bin_size = binflat->bss_end + binflat->stack_size;
 
+	/* Overflow ? */
+	if (bin_size < binflat->bss_end) {
+		udata.u_error = ENOEXEC;
+		goto nogood2;
+	}
+	
 	/* Gather the arguments, and put them in temporary buffers. */
-	abuf = (struct s_argblk *) kmalloc(ARGBUF_SIZE);
-	if (abuf == NULL) {
-		udata.u_error = ENOMEM;
-		goto nogood2;
-	}
+	abuf = (struct s_argblk *) tmpbuf();
 	/* Put environment in another buffer. */
-	ebuf = (struct s_argblk *) kmalloc(ARGBUF_SIZE);
-	if (ebuf == NULL) {
-		kfree(abuf);
-		udata.u_error = ENOMEM;
-		goto nogood2;
-	}
+	ebuf = (struct s_argblk *) tmpbuf();
 
 	/* Read args and environment from process memory */
 	if (rargs(argv, abuf) || rargs(envp, ebuf))
@@ -188,8 +219,11 @@ arg_t _execve(void)
 	 * so we can start writing over the old program
 	 */
 	
-	progbase = pagemap_base();
+	udata.u_codebase = progbase = pagemap_base();
 	top = progbase + bin_size;
+
+//	kprintf("user space at %p\n", progbase);
+//	kprintf("top at %p\n", progbase + bin_size);
 
 	uput(buf, (uint8_t *)progbase, 512);	/* Move 1st Block to user bank */
 
@@ -210,19 +244,22 @@ arg_t _execve(void)
 
 	bin_size = binflat->reloc_start + 4 * binflat->reloc_count;
 	if (bin_size > 512)
-		bload(ino, 1, progbase + 512, bin_size - 512);
-	
+		bload(ino, 1, (uint8_t *)progbase + 512, bin_size - 512);
+
 	go = (uint32_t)progbase + binflat->entry;
 
+	/* Header isn't counted in relocations */
 	relocate(binflat, progbase, bin_size);
 	/* This may wipe the relocations */	
-	uzero(progbase + binflat->data_end, 
+	uzero((uint8_t *)progbase + binflat->data_end,
 		binflat->bss_end - binflat->data_end + binflat->stack_size);
 
 	brelse(buf);
 
-	/* brk eats into the stack allocation */
-	udata.u_break = (uaddr_t)(progbase + binflat->bss_end);
+	/* Use of brk eats into the stack allocation */
+
+	/* Use the temporary we saved (hack) as we mangled bss_end */
+	udata.u_break = udata.u_codebase + true_brk;
 
 	/* Turn off caught signals */
 	memset(udata.u_sigvec, 0, sizeof(udata.u_sigvec));
@@ -237,8 +274,8 @@ arg_t _execve(void)
 	uget((void *) ugetl(nargv, NULL), udata.u_name, 8);
 	memcpy(udata.u_ptab->p_name, udata.u_name, 8);
 
-	kfree(abuf);
-	kfree(ebuf);
+	brelse(abuf);
+	brelse(ebuf);
 	i_deref(ino);
 
 	/* Shove argc and the address of argv just below envp */
@@ -246,15 +283,24 @@ arg_t _execve(void)
 	uputl((uint32_t) argc, nenvp - 2);
 
 	// Set stack pointer for the program
-	udata.u_isp = nenvp - 4;
+	udata.u_isp = nenvp - 2;
+
+	/*
+	 * Sort of - it's a good way to deal with all the stupidity of
+	 * random 68K platforms we will have to handle, and a nice place
+	 * to stuff the signal trampoline 8)
+	 */
+	install_vdso();
+
+//	kprintf("Go = %p ISP = %p\n", go, udata.u_isp);
 
 	// Start execution (never returns)
 	doexec(go);
 
 	// tidy up in various failure modes:
 nogood3:
-	kfree(abuf);
-	kfree(ebuf);
+	brelse(abuf);
+	brelse(ebuf);
 nogood2:
 	brelse(buf);
 nogood:
@@ -266,7 +312,7 @@ nogood:
 #undef argv
 #undef envp
 
-/* TODO        max (1024) 512 bytes for argv
+/* TODO:        max (1024) 512 bytes for argv
  *             and max 512 bytes for environ
  */
 
@@ -276,11 +322,13 @@ bool rargs(char **userspace_argv, struct s_argblk * argbuf)
 	uint8_t c;
 	uint8_t *bufp;
 	int err;
+	void *up = (void *)userspace_argv;
 
 	argbuf->a_argc = 0;	/* Store argc in argbuf */
 	bufp = argbuf->a_buf;
 
-	while ((ptr = (char *) ugetl(userspace_argv++, &err)) != NULL) {
+	while ((ptr = (char *) ugetp(up, &err)) != NULL) {
+		up += sizeof(uptr_t);
 		if (err)
 			return true;
 		++(argbuf->a_argc);	/* Store argc in argbuf. */
@@ -295,6 +343,9 @@ bool rargs(char **userspace_argv, struct s_argblk * argbuf)
 	}
 	/*Store total string size. */
 	argbuf->a_arglen = bufp - (uint8_t *)argbuf->a_buf;
+	/* Align */
+	if (argbuf->a_arglen & 1)
+		argbuf->a_arglen++ ;
 	/* Success */
 	return false;
 }
@@ -302,9 +353,9 @@ bool rargs(char **userspace_argv, struct s_argblk * argbuf)
 
 char **wargs(char *ptr, struct s_argblk *argbuf, int *cnt)	// ptr is in userspace
 {
-	char **argv;		/* Address of users argv[], just below ptr */
+	void *argv;		/* Address of users argv[], just below ptr */
 	int argc, arglen;
-	char **argbase;
+	uptr_t *argbase;
 	uint8_t *sptr;
 
 	sptr = argbuf->a_buf;
@@ -318,7 +369,7 @@ char **wargs(char *ptr, struct s_argblk *argbuf, int *cnt)	// ptr is in userspac
 
 	/* Set argv to point below the argument strings */
 	argc = argbuf->a_argc;
-	argbase = argv = (char **) ptr - (argc + 1);
+	argbase = argv = ptr - sizeof(uptr_t) * (argc + 1);
 
 	if (cnt) {
 		*cnt = argc;
@@ -326,14 +377,16 @@ char **wargs(char *ptr, struct s_argblk *argbuf, int *cnt)	// ptr is in userspac
 
 	/* Set each element of argv[] to point to its argument string */
 	while (argc--) {
-		uputl((uint32_t) ptr, argv++);
+		uputp((uint32_t) ptr, argv);
+//		kprintf("arg %p\n", argv);
+		argv += sizeof(uptr_t);
 		if (argc) {
 			do
 				++ptr;
 			while (*sptr++);
 		}
 	}
-	uputl(0, argv);
+	uputp(0, argv);
 	return ((char **) argbase);
 }
 

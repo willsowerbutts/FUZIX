@@ -8,10 +8,11 @@
 #undef  I80386			/* Intel 80386 */
 #define MC6809			/* Motorola 6809 */
 
+#define MEM_SMALL		/* 16bit sbrk memory pool */
+
 /* one of these target operating systems must be defined */
 
-#define EDOS			/* generate EDOS executable */
-#undef  MINIX			/* generate Minix executable */
+#define FUZIX			/* FUZIX executable */
 
 /* these may need to be defined to suit the source processor */
 

@@ -13,21 +13,19 @@ static bool_t elseflag;	/* set if ELSE/ELSEIF are enabled */
 				/* depends on zero = FALSE init */
 static bool_t lcommflag;
 
-static void bumpsem P((struct flags_s *flagptr, int defval));
-static void constdata P((unsigned size));
-static void docomm P((void));
-static void doelseif P((pfv func));
-static void doequset P((unsigned char labits));
-static void doentexp P((unsigned char entbits, unsigned char impbits));
-static void dofcc P((void));
-static void doif P((pfv func));
-static struct sym_s *needlabel P((void));
-static void showredefinedlabel P((void));
-static void setloc P((unsigned seg));
+static void bumpsem(struct flags_s *flagptr, int defval);
+static void constdata(unsigned size);
+static void docomm(void);
+static void doelseif(pfv func);
+static void doequset(unsigned char labits);
+static void doentexp(unsigned char entbits, unsigned char impbits);
+static void dofcc(void);
+static void doif(pfv func);
+static struct sym_s *needlabel(void);
+static void showredefinedlabel(void);
+static void setloc(unsigned seg);
 
-static void bumpsem(flagptr, defval)
-register struct flags_s *flagptr;
-int defval;
+static void bumpsem(struct flags_s *flagptr, int defval)
 {
     int newcount;
 
@@ -70,8 +68,7 @@ int defval;
 /* check symbol is either undefined */
 /* or has the same segment & relocatability as lc */
 
-bool_pt checksegrel(symptr)
-register struct sym_s *symptr;
+bool_pt checksegrel(struct sym_s *symptr)
 {
     if ((symptr->type & LABIT ||
 	(symptr->data & IMPBIT && !(symptr->data & UNDBIT))) &&
@@ -745,7 +742,7 @@ void pfdb(void)
     firstdata = lastexp.data;
     while (TRUE)
     {
-	*adrptr++ = lastexp;
+	memcpy(adrptr++, &lastexp, sizeof(lastexp));
 	mcount += 2;		/* won't overflow, line length limits it */
 	if (sym != COMMA)
 	    break;

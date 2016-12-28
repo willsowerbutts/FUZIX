@@ -10,13 +10,16 @@
  *
  */
 
+#include	"defs.h"
 #include 	<dirent.h>
 #include	<sys/types.h>
 #define DIRSIZ 31
 #include	<sys/stat.h>
-#include	"defs.h"
 
-
+/* We can't detect Fuzix yet --- this will do for now. */
+#if !defined(__gnu_linux__)
+#define FUZIX_INTERNAL_DIR_API
+#endif
 
 /* globals (file name generation)
  *
@@ -32,20 +35,28 @@ static void addg(const char *as1, char *as2, const char *as3);
 
 int expand(char *as, int rflg)
 {
-	int count, dirf;
+	int count;
 	BOOL dir = 0;
 	STRING rescan = 0;
-	register char *s, *cs;
+	register char *s, *cs, *fs;
 	ARGPTR schain = gchain;
 	STATBUF statb;
-	/* Use the internal API to avoid sucking in readdir and thus malloc */
-	struct __dirent entry;
+	#ifdef FUZIX_INTERNAL_DIR_API
+		/* Use the internal API to avoid sucking in readdir and thus malloc */
+		struct __dirent entry;
+		int dirf;
+	#else
+		struct dirent* entry;
+		DIR* dirf;
+	#endif
 
 	if (trapnote & SIGSET)
 		return (0);
 
 	s = cs = as;
+	#ifdef FUZIX_INTERNAL_DIR_API
 	entry.d_name[DIRSIZ - 1] = 0;	/* to end the string */
+	#endif
 
 	/* check for meta chars */
 	{
@@ -76,10 +87,24 @@ int expand(char *as, int rflg)
 			break;
 		}
 	}
-	if (stat(s, &statb) >= 0
-	    && (statb.st_mode & S_IFMT) == S_IFDIR
-	    && (dirf = open(s, 0)) > 0) {
-		dir++;
+
+	#ifdef FUZIX_INTERNAL_DIR_API
+		fs = s;
+	#else
+		fs = (s == nullstr) ? "." : s;
+	#endif
+
+	if (stat(fs, &statb) >= 0
+	    && (statb.st_mode & S_IFMT) == S_IFDIR)
+	{
+		#ifdef FUZIX_INTERNAL_DIR_API
+			if ((dirf = open(fs, 0)) > 0)
+		#else
+			if (dirf = opendir(fs))
+		#endif
+			{
+				dir++;
+			}
 	}
 	count = 0;
 	if (*cs == 0) {
@@ -99,15 +124,27 @@ int expand(char *as, int rflg)
 
 		/* We don't want to use opendir as it uses calloc and sucks in malloc so we get
 		   down and dirty */
-		while (_getdirent(dirf, (void *) &entry, 32) == 32 && (trapnote & SIGSET) == 0) {
-			if (entry.d_ino == 0 || (*entry.d_name == '.' && *cs != '.'))
-				continue;
-			if (gmatch(entry.d_name, cs)) {
-				addg(s, entry.d_name, rescan);
-				count++;
+		#ifdef FUZIX_INTERNAL_DIR_API
+			while (_getdirent(dirf, (void *) &entry, 32) == 32 && (trapnote & SIGSET) == 0) {
+				if (entry.d_ino == 0 || (*entry.d_name == '.' && *cs != '.'))
+					continue;
+				if (gmatch(entry.d_name, cs)) {
+					addg(s, entry.d_name, rescan);
+					count++;
+				}
 			}
-		}
-		close(dirf);
+			close(dirf);
+		#else
+			while ((entry = readdir(dirf)) && (trapnote & SIGSET) == 0) {
+				if (entry->d_ino == 0 || (*entry->d_name == '.' && *cs != '.'))
+					continue;
+				if (gmatch(entry->d_name, cs)) {
+					addg(s, entry->d_name, rescan);
+					count++;
+				}
+			}
+			closedir(dirf);
+		#endif
 
 		if (rescan) {
 			register ARGPTR rchain;
@@ -127,7 +164,7 @@ int expand(char *as, int rflg)
 	{
 		register char c;
 		s = as;
-		while (c = *s)
+		while ( (c = *s) )
 			*s++ = (c & STRIP ? c : '/');
 	}
 	return count;
@@ -138,7 +175,7 @@ int gmatch(register char *s, register char *p)
 	register int scc;
 	char c;
 
-	if (scc = *s++) {
+	if ( (scc = *s++) ) {
 		if ((scc &= STRIP) == 0) {
 			scc = 0200;
 		}
@@ -150,7 +187,7 @@ int gmatch(register char *s, register char *p)
 			int lc;
 			ok = 0;
 			lc = 077777;
-			while (c = *p++) {
+			while ( (c = *p++) ) {
 				if (c == ']') {
 					return (ok ? gmatch(s, p) : 0);
 				} else if (c == MINUS) {
@@ -197,7 +234,7 @@ static void addg(const char *as1, char *as2, const char *as3)
 	s2 = locstak() + BYTESPERWORD;
 
 	s1 = as1;
-	while (c = *s1++) {
+	while ( (c = *s1++) ) {
 		if ((c &= STRIP) == 0) {
 			*s2++ = '/';
 			break;
@@ -206,12 +243,12 @@ static void addg(const char *as1, char *as2, const char *as3)
 		*s2++ = c;
 	}
 	s1 = as2;
-	while (*s2 = *s1++) {
+	while ( (*s2 = *s1++) ) {
 		s2++;
 	}
-	if (s1 = as3) {
+	if ( (s1 = as3) ) {
 		*s2++ = '/';
-		while (*s2++ = *++s1);
+		while ( (*s2++ = *++s1) );
 	}
 	makearg(endstak(s2));
 }

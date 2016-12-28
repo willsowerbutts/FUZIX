@@ -21,12 +21,6 @@ typedef unsigned char BOOL;
 #define STDIN           0
 #define STDOUT          1
 
-/*
-#define isblank(ch)     (((ch) == ' ')  || ((ch) == '\t'))
-#define isdecimal(ch)   (((ch) >= '0')  && ((ch) <= '9'))
-*/
-#define isblank(ch)	isspace(ch)
-
 typedef int NUM;
 typedef int LEN;
 
@@ -73,21 +67,21 @@ static LINE *findline(NUM);
 
 BOOL intflag;
 
-void main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
     if (!initedit())
-	return;
+	return 0;
 
     if (argc > 1) {
 	filename = strdup(argv[1]);
 	if (filename == NULL) {
 	    fprintf(stderr, "No memory\n");
 	    termedit();
-	    return;
+	    return 1;
 	}
 	if (!readlines(filename, 1)) {
 	    termedit();
-	    return;
+	    return 1;
 	}
 	if (lastnum)
 	    setcurnum(1);
@@ -97,6 +91,7 @@ void main(int argc, char *argv[])
     docommands();
 
     termedit();
+    return 0;
 }
 
 
@@ -655,14 +650,14 @@ static BOOL getnum(char **retcp, BOOL *rethavenum, NUM *retnum)
 	    break;
 
 	default:
-	    if (!isdecimal(*cp)) {
+	    if (!isdigit(*cp)) {
 		*retcp = cp;
 		*rethavenum = havenum;
 		*retnum = value;
 		return TRUE;
 	    }
 	    num = 0;
-	    while (isdecimal(*cp))
+	    while (isdigit(*cp))
 		num = num * 10 + *cp++ - '0';
 	    havenum = TRUE;
 	    break;

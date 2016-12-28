@@ -3,6 +3,17 @@
 #include <kdata.h>
 #include <stdarg.h>
 
+/* Error checking */
+
+void validchk(uint16_t dev, const char *p)
+{
+        if (!validdev(dev)) {
+                kputs(p);
+                kputchar(':');
+                panic(PANIC_INVD);
+        }
+}
+
 /* Buffer pool management */
 /*********************************************************************
 The high-level interface is through bread() and bfree().
@@ -35,7 +46,7 @@ uint8_t *bread(uint16_t dev, blkno_t blk, bool rewrite)
 
 	if ((bp = bfind(dev, blk)) != NULL) {
 		if (bp->bf_busy == BF_BUSY)
-			panic("want busy block");
+			panic(PANIC_WANTBSYB);
 		else if (bp->bf_busy == BF_FREE)
 			bp->bf_busy = BF_BUSY;
 		/* BF_SUPERBLOCK is fine */
@@ -80,7 +91,7 @@ int bfree(bufptr bp, uint8_t dirty)
 	if(bp->bf_busy == BF_BUSY) /* do not free BF_SUPERBLOCK */
 		bp->bf_busy = BF_FREE;
 
-	if (dirty > 1) {	// immediate writeback
+	if (dirty > 1) {	/* immediate writeback */
 		if (bdwrite(bp) == -1)
 			udata.u_error = EIO;
 		bp->bf_dirty = false;
@@ -130,7 +141,7 @@ void bufsync(void)
 
 	/* FIXME: this can generate a lot of d_flush calls when you have
 	   plenty of buffers */
-	for (bp = bufpool; bp < bufpool + NBUFS; ++bp) {
+	for (bp = bufpool; bp < bufpool_end; ++bp) {
 		if ((bp->bf_dev != NO_DEVICE) && bp->bf_dirty)
 		        bdput(bp);
 	}
@@ -140,7 +151,7 @@ bufptr bfind(uint16_t dev, blkno_t blk)
 {
 	bufptr bp;
 
-	for (bp = bufpool; bp < bufpool + NBUFS; ++bp) {
+	for (bp = bufpool; bp < bufpool_end; ++bp) {
 		if (bp->bf_dev == dev && bp->bf_blk == blk)
 			return bp;
 	}
@@ -151,7 +162,7 @@ void bdrop(uint16_t dev)
 {
 	bufptr bp;
 
-	for (bp = bufpool; bp < bufpool + NBUFS; ++bp) {
+	for (bp = bufpool; bp < bufpool_end; ++bp) {
 		if (bp->bf_dev == dev) {
 		        bdput(bp);
 		        bp->bf_dev = NO_DEVICE;
@@ -168,14 +179,14 @@ bufptr freebuf(void)
 	/* Try to find a non-busy buffer and write out the data if it is dirty */
 	oldest = NULL;
 	oldtime = 0;
-	for (bp = bufpool; bp < bufpool + NBUFS; ++bp) {
+	for (bp = bufpool; bp < bufpool_end; ++bp) {
 		if (bufclock - bp->bf_time >= oldtime && bp->bf_busy == BF_FREE) {
 			oldest = bp;
 			oldtime = bufclock - bp->bf_time;
 		}
 	}
 	if (!oldest)
-		panic("no free buffers");
+		panic(PANIC_NOFREEB);
 
 	if (oldest->bf_dirty) {
 		if (bdwrite(oldest) == -1)
@@ -223,38 +234,40 @@ Any device other than a disk will have only raw access.
    out some scheme to do a bank call here - do we need a dev_tab bank
    entry perhaps ? */
 
+static void bdsetup(bufptr bp)
+{
+	udata.u_buf = bp;
+	udata.u_block = bp->bf_blk;
+	udata.u_blkoff = 0;
+	udata.u_nblock = 1;
+	udata.u_dptr = bp->bf_data;
+}
+
 int bdread(bufptr bp)
 {
 	uint16_t dev = bp->bf_dev;
-	if (!validdev(dev))
-		panic("bdread: invalid dev");
-
-	udata.u_buf = bp;
+	validchk(dev, PANIC_BDR);
+	bdsetup(bp);
 	return ((*dev_tab[major(dev)].dev_read) (minor(dev), 0, 0));
 }
-
 
 int bdwrite(bufptr bp)
 {
 	uint16_t dev = bp->bf_dev;
-	if (!validdev(dev))
-		panic("bdwrite: invalid dev");
-
-	udata.u_buf = bp;
+	validchk(dev, PANIC_BDW);
+	bdsetup(bp);
 	return ((*dev_tab[major(dev)].dev_write) (minor(dev), 0, 0));
 }
 
 int cdread(uint16_t dev, uint8_t flag)
 {
-	if (!validdev(dev))
-		panic("cdread: invalid dev");
+	validchk(dev, PANIC_CDR);
 	return ((*dev_tab[major(dev)].dev_read) (minor(dev), 1, flag));
 }
 
 int cdwrite(uint16_t dev, uint8_t flag)
 {
-	if (!validdev(dev))
-		panic("cdwrite: invalid dev");
+	validchk(dev, PANIC_CDW);
 	return ((*dev_tab[major(dev)].dev_write) (minor(dev), 1, flag));
 }
 
@@ -269,26 +282,24 @@ int d_open(uint16_t dev, uint8_t flag)
 
 int d_close(uint16_t dev)
 {
-	if (!validdev(dev))
-		panic("d_close: bad device");
+	validchk(dev, PANIC_DCL);
         bdrop(dev);
 	return (*dev_tab[major(dev)].dev_close) (minor(dev));
 }
 
 int d_ioctl(uint16_t dev, uint16_t request, char *data)
 {
+	int ret;
+
 	if (!validdev(dev)) {
 		udata.u_error = ENXIO;
 		return -1;
 	}
 
-	if ((*dev_tab[major(dev)].dev_ioctl) (minor(dev), request, data)) {
-		if (!udata.u_error)	// maybe the ioctl routine might set this?
+	ret =  (*dev_tab[major(dev)].dev_ioctl) (minor(dev), request, data);
+	if (ret == -1 && !udata.u_error)	// maybe the ioctl routine might set this?
 			udata.u_error = ENOTTY;
-		return -1;
-	}
-
-	return 0;
+	return ret;
 }
 
 int d_flush(uint16_t dev)
@@ -301,6 +312,23 @@ int d_flush(uint16_t dev)
 		r = 0;
 	}
 	return r;
+}
+
+/* 128, 256, 512 supported for now */
+static uint16_t masks[] = { 0x7F, 0xFF, 0x1FF };
+
+/* This is not a commonly used path so can be slower */
+int d_blkoff(uint8_t shift)
+{
+	uint16_t m = masks[shift - 7];
+	udata.u_block = udata.u_offset >> shift;
+	if (udata.u_offset & m) {
+		udata.u_error = EIO;
+		return -1;
+	}
+	udata.u_nblock = (udata.u_count + m) >> shift;
+	udata.u_dptr = udata.u_base;
+	return 0;
 }
 
 /*
@@ -363,7 +391,7 @@ bool insq(struct s_queue * q, unsigned char c)
 	if (q->q_count == q->q_size)
 		r = false;	// no space left :(
 	else {
-		*(q->q_tail) = c;
+		PUTQ(q->q_tail, c);
 		++q->q_count;
 		if (++q->q_tail >= q->q_base + q->q_size)
 			q->q_tail = q->q_base;
@@ -384,7 +412,7 @@ bool remq(struct s_queue * q, unsigned char *cp)
 	if (!q->q_count)
 		r = false;
 	else {
-		*cp = *(q->q_head);
+		*cp = GETQ(q->q_head);
 		--q->q_count;
 		if (++q->q_head >= q->q_base + q->q_size)
 			q->q_head = q->q_base;
@@ -420,7 +448,7 @@ bool uninsq(struct s_queue *q, unsigned char *cp)
 		--q->q_count;
 		if (--q->q_tail < q->q_base)
 			q->q_tail = q->q_base + q->q_size - 1;
-		*cp = *(q->q_tail);
+		*cp = GETQ(q->q_tail);
 		r = true;
 	}
 	irqrestore(irq);
@@ -442,18 +470,30 @@ bool uninsq(struct s_queue *q, unsigned char *cp)
              Miscellaneous helpers
 **********************************************************************/
 
-int psleep_flags(void *p, unsigned char flags)
+int psleep_flags_io(void *p, unsigned char flags, usize_t *n)
 {
 	if (flags & O_NDELAY) {
-		udata.u_error = EAGAIN;
-		return (-1);
+	        if (!*n) {
+	                *n = (usize_t)-1;
+			udata.u_error = EAGAIN;
+                }
+		return -1;
 	}
 	psleep(p);
-	if (udata.u_cursig || udata.u_ptab->p_pending) {	/* messy */
-		udata.u_error = EINTR;
-		return (-1);
+	if (chksigs()) {
+	        if (!*n) {
+	                *n = (usize_t)-1;
+                        udata.u_error = EINTR;
+                }
+		return -1;
 	}
 	return 0;
+}
+
+int psleep_flags(void *p, unsigned char flags)
+{
+        usize_t dummy = 0;
+        return psleep_flags_io(p, flags, &dummy);
 }
 
 void kputs(const char *p)
@@ -504,37 +544,61 @@ void kputnum(int v)
 
 void kprintf(const char *fmt, ...)
 {
-	char *str;
-	unsigned int v;
-	char c;
 	va_list ap;
 
 	va_start(ap, fmt);
 	while (*fmt) {
 		if (*fmt == '%') {
 			fmt++;
-			if (*fmt == 's') {
-				str = va_arg(ap, char *);
-				kputs(str);
-				fmt++;
-				continue;
-			}
-			if (*fmt == 'c') {
-				c = va_arg(ap, int);
-				kputchar(c);
-				fmt++;
-				continue;
-			}
-			if (*fmt == 'x' || *fmt == 'd' || *fmt == 'u') {
-				v = va_arg(ap, int);
-				if (*fmt == 'x')
-					kputhex(v);
-				else if (*fmt == 'd')
-					kputnum(v);
-				else if (*fmt == 'u')
-					kputunum(v);
-				fmt++;
-				continue;
+			switch (*fmt) {
+				case 's':
+				{
+					char* str = va_arg(ap, char *);
+					kputs(str);
+					fmt++;
+					continue;
+				}
+
+				case 'c':
+				{
+					char c = va_arg(ap, int);
+					kputchar(c);
+					fmt++;
+					continue;
+				}
+#ifdef CONFIG_32BIT
+				case 'p':
+					fmt--;
+#endif
+				case 'l': /* assume an x is following */
+				{
+					long l = va_arg(ap, unsigned long);
+					/* TODO: not 32-bit safe */
+					kputhex((uint16_t)(l >> 16));
+					kputhex((uint16_t)l);
+					fmt += 2;
+					continue;
+				}
+
+#ifndef CONFIG_32BIT
+				case 'p':
+#endif
+				case 'x':
+				case 'd':
+				case 'u':
+				{
+					unsigned int v = va_arg(ap, int);
+
+					if (*fmt == 'x' || *fmt == 'p')
+						kputhex(v);
+					else if (*fmt == 'd')
+						kputnum(v);
+					else if (*fmt == 'u')
+						kputunum(v);
+
+					fmt++;
+					continue;
+				}
 			}
 		}
 		kputchar(*fmt);
@@ -549,7 +613,7 @@ void bufdump(void)
 	bufptr j;
 
 	kprintf("\ndev\tblock\tdirty\tbusy\ttime clock %d\n", bufclock);
-	for (j = bufpool; j < bufpool + NBUFS; ++j)
+	for (j = bufpool; j < bufpool_end; ++j)
 		kprintf("%d\t%u\t%d\t%d\t%u\n", j->bf_dev, j->bf_blk,
 			j->bf_dirty, j->bf_busy, j->bf_time);
 }
@@ -561,17 +625,17 @@ void idump(void)
 	extern struct cinode i_tab[];
 
 	kprintf("Err %d root %d\n", udata.u_error, root - i_tab);
-	kputs("\tMAGIC\tDEV\tNUM\tMODE\tNLINK\t(DEV)\tREFS\tDIRTY\n");
+	kputs("\tMAGIC\tDEV\tNUM\tMODE\tNLINK\t(DEV)\tREFS\tR/W\tDIRTY\n");
 
 	for (ip = i_tab; ip < i_tab + ITABSIZE; ++ip) {
 		if(ip->c_magic != CMAGIC)
 			continue;
-		kprintf("%d\t%d\t%d\t%u\t%d\t",
+		kprintf("%d\t%d\t%d\t%u\t%u\t",
 			ip - i_tab, ip->c_magic, ip->c_dev, ip->c_num,
 			ip->c_node.i_mode);
-		kprintf("%d\t%d\t%d\t%d\n",	/* line split for compiler */
+		kprintf("%d\t%d\t%d\t%d:%d\t%d\n",
 			ip->c_node.i_nlink, ip->c_node.i_addr[0],
-			ip->c_refs, ip->c_flags);
+			ip->c_refs, ip->c_readers,ip->c_writers, ip->c_flags);
 	}
 
 	kputs

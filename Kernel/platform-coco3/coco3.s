@@ -18,14 +18,17 @@
 	    .globl map_save
 	    .globl map_restore
 	    .globl _need_resched
+	    .globl _hz
+	    .globl _bufpool
+	    .globl _discard_size
 
             ; exported debugging tools
             .globl _trap_monitor
 	    .globl _trap_reboot
             .globl outchar
-	    .globl _di
-	    .globl _ei
-	    .globl _irqrestore
+	    .globl ___hard_di
+	    .globl ___hard_ei
+	    .globl ___hard_irqrestore
 
             ; imported symbols
             .globl _ramsize
@@ -33,10 +36,22 @@
             .globl unix_syscall_entry
 	    .globl nmi_handler
 	    .globl null_handler
+	    .globl video_init
+	    .globl _scanmem
 
             include "kernel.def"
             include "../kernel09.def"
 
+
+	.area	.buffers
+
+_bufpool:
+	.ds	BUFSIZE*NBUFS
+
+	.area	.discard
+_discard_size:
+	.db	__sectionlen_.discard__/BUFSIZE
+	
 ; -----------------------------------------------------------------------------
 ; COMMON MEMORY BANK
 ; -----------------------------------------------------------------------------
@@ -83,7 +98,7 @@ bounce_end@
 ;;; Turn off interrupts
 ;;;    takes: nothing
 ;;;    returns: B = original irq (cc) state
-_di:
+___hard_di:
 	    tfr cc,b		; return the old irq state
 	    orcc #0x10
 	    rts
@@ -91,21 +106,25 @@ _di:
 ;;; Turn on interrupts
 ;;;   takes: nothing
 ;;;   returns: nothing
-_ei:
+___hard_ei:
 	    andcc #0xef
 	    rts
 
 ;;; Restore interrupts to saved setting
 ;;;   takes: B = saved state (as returned from _di )
 ;;;   returns: nothing
-_irqrestore:			; B holds the data
+___hard_irqrestore:		; B holds the data
 	    tfr b,cc
 	    rts
 
 ; -----------------------------------------------------------------------------
 ; KERNEL MEMORY BANK
 ; -----------------------------------------------------------------------------
-            .area .text
+	.area .data
+_hz:	.db	0  		; Is machine in 50hz?
+
+
+            .area .discard
 
 ;;;  Stuff to initialize *before* hardware
 ;;;    takes: nothing
@@ -121,10 +140,19 @@ init_early:
 ;;;    takes: nothing
 ;;;    returns: nothing
 init_hardware:
+	;; High speed poke
+	sta	0xffd9		; high speed poke
 	;; set system RAM size
-	ldd 	#512
+	jsr	_scanmem	; X = number of pages
+	tfr 	x,d
+	lslb
+	rola
+	lslb
+	rola
+	lslb
+	rola
 	std 	_ramsize
-	ldd 	#512-64
+	subd	#64+16
 	std 	_procmem
 	;; set initial user mmu
 	ldd	#8
@@ -133,11 +161,31 @@ b@	sta	,x+
 	inca
 	decb
 	bne	b@
+	;; move mmu bank 0x6 to 0xB
+	lda	#$0b		; map mmu bank 0xB to cpu $0000
+	sta	$ffa8		;
+	ldx	#$0000		; dest
+	ldu	#$c000		; src
+c@	ldd	,u++		; copy 2 at a time
+	std	,x++		;
+	cmpx	#$2000		; are we done?
+	bne	c@		; loop if not done
+	clr	$ffa8		; reset cpu $0000
         ;; set temporary screen up
+	clr	$ff9c		; reset scroll register
 	ldb	#%01000100	; coco3 mode
 	stb	$ff90
-	ldb	#%00001100	; text / 8 lines per char row
-	stb	$ff98
+	;; detect PAL or NTSC ROM
+	ldb	#$3f		; put Super BASIC in mmu
+	stb	$ffae		;
+	lda	$c033		; get BASIC's "mirror" of Video Reg
+	ldb	#$0b		; put Fuzix Kernel back in mmu
+	stb	$ffae		;
+	anda	#$8		; mask off 50 hz bit
+	sta	_hz		; save for future use
+	;; continue setup of regs
+	ora	#%00000100	; text @ 9 lines per char row
+	sta	$ff98
 	ldb	#%00010100	; 80 column mode
 	stb	$ff99
 	ldd	#$b400/8	; video at physical 0xb000
@@ -146,11 +194,7 @@ b@	sta	,x+
 	sta	$ffb0
 	stb	$ffb8
 	;; clear video memory
-	ldx	#$ac00
-	lda	#$20
-a@	sta	,x+
-	cmpx	#$bb80
-	bne	a@
+	jsr	_video_init
         ;; Our vectors are in high memory unlike Z80 but we still
         ;; need vectors
 	ldu	#0xfeee		; vector area
@@ -172,6 +216,7 @@ a@	sta	,x+
 	ldx 	#nmi_handler
 	sta	,u+
 	stx	,u
+	jsr	_devtty_init
         rts
 
 
@@ -316,6 +361,15 @@ outchar:
 
 	.area	.data
 scrPos	.dw	0xb400		; debugging screen buffer position
+	.area	.text
 
 
+;;; Maps the memory for swap transfers
+;;;   takes: A = swap token ( a page no. )
+;;;   returns: nothing
+map_for_swap
+	sta	0xffa8
+	inca
+	sta	0xffa9
+	rts
 

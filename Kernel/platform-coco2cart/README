@@ -1,0 +1,90 @@
+COCO2
+=====
+
+(Work in progress)
+
+COCO or Dragon 64 with an IDE port, cartridge and 64K of RAM
+
+Supported hardware:
+	IDE (Cloud9 or compatible set at FF50) with either built in
+		cartridge RAM or separate cartridge
+	COCO SDC (in progress)
+
+Disk Layout
+===========
+
+At the moment partitions are not handled. Instead each minor number
+corresponds to a 32MB slice of disc. Slice 0 holds the kernel image and
+the rest is used for swapping processes. Slice 1 then normally holds the
+first file system and so on. Add 128 for the second disc. Remember to keep
+all of them under the offset you have set in the HDBDOS ROM for your disk
+basic floppy images.
+
+TODO: Now we have a bit more room, add minimal partition support for at
+least primary partitions.
+
+Memory Map
+==========
+
+User View
+=========
+0000-00FF	Interrupt stack
+0100-01FF	Vectors plus the swap stack
+0200-19FF	Display
+1A00-1BFF	udata/stack
+1C00-7FFF	Common, data and some kernel code
+8000-FDFF	User space
+FE00-FEFF	Free
+FF00-FFFF	I/O etc
+
+Kernel Mode View
+================
+0000-00FF	Interrupt stack
+0100-01FF	Vectors plus swap stack
+0200-19FF	Display
+1A00-1BFF	udata/stack
+1C00-7FFF	Common, data and some kernel code
+8000-BFFF	ROM
+C000-FEFF	Kernel
+FF00-FFFF	I/O etc
+
+
+Emulating in XRoar
+==================
+
+Needs the IDE patches
+
+TODO
+====
+
+Fix use of CONFIG_LEGACY_EXEC in the devsdc driver
+
+Make the boot loader robust (timeout handling)
+Add hash of code not just simple magic - so we know bits match
+Merge coco and IDE boot code so it works out which is present
+
+Support for a real time clock and clock locking
+
+We should be totally clean now on FIR blocking, so audio might
+actually be doable if not doing drivewire.
+
+We have about 2K left to try and jam those bits in which might just about be
+enough to add support for very minimal MBR parsing and offsets. That would
+be a big improvement.
+
+Automatically pick swap according to whether IDE or SDC is present.
+
+
+To Test
+=======
+
+Build the image and you'll get a fuzix.ide and fuzix.rom
+
+In the xroar directory where you have a hard disc image do
+
+dd if=/tmp/fuzix.ide of=hd0.img bs=512 seek=3 conv=notrunc
+/opt/xroaride/bin/xroar -default-machine dragon64 -cart ide -cart-rom fuzix.rom
+
+exec 49152
+
+enjoy

@@ -40,26 +40,48 @@
  *	very sure you inspect the asm output for calls to compiler helpers
  *	and don't add any.
  *
+ *	Extensions in use
+ *	- Esc a c	Set vtattr bits (inverse, etc)
+ *
+ *	- Esc b c	Set ink colour
+ *	- Esc c c	Set paper colour
+ *	Where c uses the low 4bits to provide IBRG colours
+ *		0 black
+ *		1 blue
+ *		2 red
+ *		3 magenta or similar
+ *		4 green
+ *		5 cyan
+ *		6 yellow
+ *		7 white
+ *		8-15 brighter versions - if available
+ *	Bit 4 is reserved (must be 0 if bit 5 is 0)
+ *	Bit 5 indicates bit 4-0 are platform specific colour
+ *	Bit 6 should be set to keep it in the ascii range
+ *	Bit 7 should be clear
+ *
  *	Possible VT extensions to look at
  *	- Esc-L		Insert blank line, move lines below down
  *	- ESC-M		Delete cursor line, move up blank bottom
- *	-		Colour setting (Atari ST uses esc b/c) but we need
- *			more flexibility and border
  *	- ESC-d		erase start to cursor inclusive
  *	- ESC-j		save cursor y/x
  *	- ESC-k		restore cursor
  *	- ESC-l		erase line, cursor to left
  *	- ESC-o		erase from start of line to cursor (inclusive)
  *
- *	Would tty be a better graphics interface than direct ? Probably not ?
+ *	- Some way to set border colour on consoles.
  */
 
 
 static uint8_t vtmode;
 uint8_t vtattr;
+uint8_t vtink;
+uint8_t vtpaper;
 static signed char cursorx;
 static signed char cursory = VT_INITIAL_LINE;
 static signed char ncursory;
+static uint8_t vtpend;
+static uint8_t vtbusy;
 
 static void cursor_fix(void)
 {
@@ -138,7 +160,7 @@ static int escout(unsigned char c)
 		return 0;
 	}
 	if (c == 'E') {
-		clear_lines(0, VT_HEIGHT);
+		clear_lines(0, VT_BOTTOM + 1);
 		return 0;
 	}
 	if (c == 'H') {
@@ -156,18 +178,22 @@ static int escout(unsigned char c)
 		return 0;
 	}
 	if (c == 'J') {
-		clear_across(cursory, cursorx, VT_RIGHT - cursorx);
+		clear_across(cursory, cursorx, VT_RIGHT - cursorx + 1);
 		clear_lines(cursory + 1, VT_BOTTOM - cursory);
 		return 0;
 	}
 	if (c == 'K') {
-		clear_across(cursory, cursorx, VT_RIGHT - cursorx);
+		clear_across(cursory, cursorx, VT_RIGHT - cursorx + 1);
 		return 0;
 	}
 	if (c == 'Y')
 		return 2;
 	if (c == 'a')
 		return 4;
+	if (c == 'b')
+		return 5;
+	if (c == 'c')
+		return 6;
 	return 0;
 }
 
@@ -175,35 +201,76 @@ static int escout(unsigned char c)
 /* VT52 alike functionality */
 void vtoutput(unsigned char *p, unsigned int len)
 {
-	cursor_off();
-	while (len--) {
-		unsigned char c = *p++;
-		if (vtmode == 0) {
-			charout(c);
-			continue;
-		}
-		if (vtmode == 1) {
-			vtmode = escout(c);
-			continue;
-		}
-		if (vtmode == 2) {
-			ncursory = c - ' ';
-			vtmode++;
-			continue;
-		} else if (vtmode == 3) {
-			int ncursorx = c - ' ';
-			if (ncursory >= 0 && ncursorx <= VT_BOTTOM)
-				cursory = ncursory;
-			if (ncursorx >= 0 && ncursorx <= VT_RIGHT)
-				cursorx = ncursorx;
-			vtmode = 0;
-		} else {
-			vtattr = c;
-			vtmode = 0;
-			continue;
-		}
+	irqflags_t irq;
+	uint8_t cq;
+
+	/* We can get re-entry into the vt code from tty echo. This is one of
+	   the few places in Fuzix interrupts bite us this way.
+
+	   If we have a clash then we queue the echoed symbol and print it
+	   in the thread of execution it interrupted. We only queue one so
+	   in theory might lose the odd echo - but the same occurs with real
+	   uarts. If anyone actually has printing code slow enough this is a
+	   problem then vtpend can turn into a small queue */
+	irq = di();
+	if (vtbusy) {
+		vtpend = *p;
+		irqrestore(irq);
+		return;
 	}
+	vtbusy = 1;
+	irqrestore(irq);
+	cursor_off();
+	do {
+		while (len--) {
+			unsigned char c = *p++;
+			if (vtmode == 0) {
+				charout(c);
+				continue;
+			}
+			if (vtmode == 1) {
+				vtmode = escout(c);
+				continue;
+			}
+			if (vtmode == 2) {
+				ncursory = c - ' ';
+				vtmode++;
+				continue;
+			} else if (vtmode == 3) {
+				int ncursorx = c - ' ';
+				if (ncursory >= 0 && ncursory <= VT_BOTTOM)
+					cursory = ncursory;
+				if (ncursorx >= 0 && ncursorx <= VT_RIGHT)
+					cursorx = ncursorx;
+				vtmode = 0;
+			} else if (vtmode == 4 ){
+				vtattr = c;
+				vtmode = 0;
+				vtattr_notify();
+				continue;
+			} else if (vtmode == 5) {
+				vtink = c;
+				vtmode = 0;
+				vtattr_notify();
+				continue;
+			} else if (vtmode == 6) {
+				vtpaper = c;
+				vtmode = 0;
+				vtattr_notify();
+				continue;
+			}
+		}
+		/* Copy the pending symbol and clear the buffer */
+		cq = vtpend;
+		vtpend = 0;
+		/* Any loops print the single byte in cq */
+		p = &cq;
+		len = 1;
+		/* Until we don't get interrupted */
+	} while(cq);
+
 	cursor_on(cursory, cursorx);
+	vtbusy = 0;
 }
 
 int vt_ioctl(uint8_t minor, uarg_t request, char *data)
@@ -218,16 +285,20 @@ int vt_ioctl(uint8_t minor, uarg_t request, char *data)
 			case KBMAPGET:
 				return uput(keymap, data, sizeof(keymap));
 			case KBSETTRANS:
-				if (esuper())
+				if (uget(data, keyboard, sizeof(keyboard)) == -1)
 					return -1;
-				if (uget(keyboard, data, sizeof(keyboard)) == -1)
-					return -1;
-				return uget(shiftkeyboard,
-					data + sizeof(keyboard),
+				return uget(data + sizeof(keyboard),
+					shiftkeyboard,
 					sizeof(shiftkeyboard));
+			case KBRATE:
+				if (uget(data, &keyrepeat, sizeof(keyrepeat)) == -1)
+					return -1;
+				keyrepeat.first *= (TICKSPERSEC/10);
+				keyrepeat.continual *= (TICKSPERSEC/10);
+				return 0;
 #endif					
 			case VTSIZE:
-				return VT_HEIGHT << 8 | VT_WIDTH;
+				return (VT_BOTTOM + 1) << 8 | (VT_RIGHT + 1);
 			case VTATTRS:
 				return vtattr_cap;
 		}
@@ -270,7 +341,7 @@ int vt_inproc(uint8_t minor, unsigned char c)
 void vtinit(void)
 {
 	vtmode = 0;
-	clear_lines(0, VT_HEIGHT);
+	clear_lines(0, VT_BOTTOM + 1);
 	cursor_on(0, 0);
 }
 
@@ -335,6 +406,10 @@ void clear_across(int8_t y, int8_t x, int16_t l)
 {
 	unsigned char *s = char_addr(y, x);
 	memset(s, ' ', l);
+}
+
+void vtattr_notify(void)
+{
 }
 
 /* FIXME: these should use memmove */

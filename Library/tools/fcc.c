@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 /*
  *	Wrap the sdcc compiler tools into something more Unixlike and without
@@ -18,6 +19,7 @@ static int mode = MODE_LINK;
 static char *workdir;		/* Working directory */
 
 static int verbose = 0;
+static int valgrind = 0;
 
 static unsigned int progbase = 0x0100;	/* Program base */
 
@@ -225,7 +227,11 @@ static char *rebuildname(const char *r, const char *i, char *ext)
   }
   strcpy(p, r);
   strcat(p, i);
-  t = strrchr(p, '.');
+  t = strrchr(p, '/');
+  if (t)
+    t = strrchr(t, '.');
+  else
+    t = strrchr(p, '.');
   if (t)
     strcpy(t + 1, ext);
   else {
@@ -235,6 +241,18 @@ static char *rebuildname(const char *r, const char *i, char *ext)
   return p;
 }
 
+char *filebasename(char *path)
+{
+  /* The POSIX one can mangle the input - so given its trivial do it
+     sanely ourselves */
+  char *p = strrchr(path, '/');
+  if (p == NULL)
+    return path;
+  /* We don't care about trailing slashes, we only work on files */
+  return p + 1;
+}
+  
+
 static char *chopname(const char *i)
 {
   char *p = mstrdup(i);
@@ -243,9 +261,12 @@ static char *chopname(const char *i)
     fprintf(stderr, "Out of memory.\n");
     exit(1);
   }
-  t = strrchr(p, '.');
-  if (t)
-    *t = 0;
+  t = strrchr(p, '/');
+  if (t) {
+    t = strrchr(t + 1, '.');
+    if (t)
+      *t = 0;
+  }
   return p;
 }
 
@@ -329,6 +350,17 @@ static int do_command(void)
   }
   return (WEXITSTATUS(status));
 }
+
+/*
+ *	The SDCC tool chain screws up if fed ./foo.o as a target so undo
+ *	any ./ bit
+ */
+static char *undotslash(char *p)
+{
+  if (*p == '.' && p[1] == '/')
+    return p + 2;
+  return p;
+}
     
 /*
  *	Stitch together an sdcc command.
@@ -338,7 +370,12 @@ static void build_command(void)
 {
   char buf[128];
 
+  if (valgrind == 1)
+    add_argument("valgrind");
+
   add_argument("sdcc");
+  if (verbose == 1)
+    add_argument("-V");
   /* Set up the basic parameters we will inflict on the user */
   add_argument("--std-c99");
   add_option("-m", cpu?cpu:"z80");
@@ -357,7 +394,9 @@ static void build_command(void)
   if (werror == 1)
     add_argument("--Werror");
   if (unschar == 1)
-    add_argument("-funsigned-char");
+    add_argument("--funsigned-char");
+  if (unschar == 2)
+    add_argument("--fsigned-char");
   if (debug == 1)
     add_argument("--debug");
   /* Turn -O1/2/3/4 into something meaningful */
@@ -377,6 +416,10 @@ static void build_command(void)
   if (opt == NULL || optcode < 3)
     add_argument("--opt-code-size");
   /* Macros */
+  add_argument("-D__FUZIX__");
+  /* Suppress the warnings when sharing code across architectures */
+  add_argument("-Ddouble=float");
+  /* User provided macros */
   add_argument_list(machead);
   /* Paths */
   add_option_list("-I", includehead);
@@ -392,6 +435,10 @@ static void build_command(void)
       exit(1);
     }
     add_argument("-c");
+    if (srchead->next && target) {
+      fprintf(stderr, "Cannot use -c together with -o with multiple input files.\n");
+      exit(1);
+    }
   }
   if (mode == MODE_LINK) {
     if (target == NULL)
@@ -400,7 +447,7 @@ static void build_command(void)
       fprintf(stderr, "no target.\n");
       exit(1);
     }
-    add_option("-o", target);
+    add_option("-o", undotslash(target));
     if (nostdio)
       snprintf(buf, sizeof(buf), FCC_DIR "/lib/crt0nostdio%s.rel", platform);
     else
@@ -506,10 +553,14 @@ int main(int argc, const char *argv[]) {
             werror = 1;
           else if (strcmp(p, "-funsigned-char") == 0)
             unschar = 1;
+          else if (strcmp(p, "-fsigned-char") == 0)
+            unschar = 2;
           else if (strcmp(p, "--pedantic") == 0)
             pedantic = 1;
           else if (strcmp(p, "--nostdio") == 0)
             nostdio = 1;
+          else if (strcmp(p, "--valgrind") == 0)
+            valgrind = 1;
           else {
             fprintf(stderr, "fcc: Unknown option '%s'.\n", p);
             exit(1);
@@ -528,6 +579,14 @@ int main(int argc, const char *argv[]) {
       ret = do_command();
       if (ret)
         break;
+      if (mode == MODE_OBJ && target) {
+        char *orel = filebasename(rebuildname("", srchead->p, "rel"));
+        if (rename(orel, target) == -1) {
+          fprintf(stderr, "Unable to rename %s to %s.\n", orel, target);
+          perror(srchead->p);
+          exit(1);
+        }
+      }
       srchead = srchead->next;
       argp = 0;
     }
@@ -553,7 +612,7 @@ int main(int argc, const char *argv[]) {
   add_argument(buf);
   add_argument(t);
   add_argument(rebuildname("", target, "map"));
-  add_argument(chopname(target));
+  add_argument(target);
   ret = do_command();
   exit(ret);
 }

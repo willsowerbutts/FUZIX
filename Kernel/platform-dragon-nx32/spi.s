@@ -27,13 +27,13 @@ _spi_setup:
 	lda #0x0F
 	sta SPISIE		; selects off, IRQs off
 	cmpa SPISIE
-	beq nospi
+	bne nospi
 	lda SPIDATA		; clear TC
 	lda SPISTATUS
-	bpl nospi 		; TC not clear -> no spi present
+	bmi nospi 		; TC not clear -> no spi present
 	sta SPIDATA		; start a transmit, TC should now be clear
 	lda SPISTATUS
-	bmi spigood
+	bpl spigood
 nospi:	clrb
 	rts
 spigood:
@@ -47,22 +47,22 @@ spigood:
 _sd_spi_clock:
 	cmpb #0			
 	beq slow
-	ldd #0x0401		; external 45MHz clock on, divide by 3
+	ldd #0x0401		; external 45MHz clock on, divide by 4
 	bra clkset
-slow:	ldd #0x0003		; internal clock, phi/5 -> 2MHz/5 = 400Khz
+slow:	ldd #0x0000		; internal clock, phi/2 -> 0.89MHz/2 = 445kHz
 clkset:	std SPICTRL
 	rts
 
 ;
 ;	For multiple cards these need to look at the card #
 ;
-_sd_spi_lower_cs:
+_sd_spi_raise_cs:
 	lda SPISIE
 	ora #SPICS
 	sta SPISIE
 	rts
 
-_sd_spi_raise_cs:
+_sd_spi_lower_cs:
 	lda SPISIE
 	anda #0xFF-SPICS
 	sta SPISIE
@@ -75,7 +75,7 @@ _sd_spi_transmit_byte:
 	stb SPIDATA
 txwait:
 	lda SPISTATUS
-	anda #0x40
+	anda #0x20		; BSY
 	bne txwait
 	rts
 
@@ -103,13 +103,14 @@ _sd_spi_receive_sector:
 	pshs y,dp
 	lda #0xFF
 	tfr a,dp
-	lda _blk_op + 2
-	beq rdspi
-	jsr map_process_always
-rdspi:	ldx _blk_op
+	ldx _blk_op
 	leay 512,x
 	sty endspi
-	lda #0x44		; FRX on, external clock on
+	lda _blk_op+2
+	beq rdspi
+	jsr map_process_always
+rdspi:	lda #0x14		; FRX on, external clock on
+	sta <SPICTRL
 read8:
 	lda <SPIDATA
 	ldb <SPIDATA
@@ -127,19 +128,21 @@ read8:
 	bne read8
 	jsr map_kernel
 	lda #0x04
-	sta SPICTRL		; FRX off, external clock on
+	sta <SPICTRL		; FRX off, external clock on
 	puls y,dp,pc
 
 _sd_spi_transmit_sector:
 	pshs y,dp
 	lda #0xFF
 	tfr a,dp
-	lda _blk_op + 2
-	beq wrspi
-	jsr map_process_always
-wrspi:	ldx _blk_op
+	ldx _blk_op
 	leay 512,x
 	sty endspi
+	lda _blk_op+2
+	beq wrspi
+	jsr map_process_always
+wrspi:	lda #0x04		; ext clock, no FRX
+	sta SPICTRL
 write8:
 	ldd ,x++
 	sta <SPIDATA

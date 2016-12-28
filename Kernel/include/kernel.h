@@ -15,12 +15,43 @@ From UZI by Doug Braun and UZI280 by Stefan Nitschke.
 #include "config.h"
 #include "cpu.h"
 
+#include "panic.h"
+
 #ifndef NULL
 #define NULL (void *)0
 #endif
 
 #define min(a,b) ( (a) < (b) ? (a) : (b) )
 #define max(a,b) ( (a) > (b) ? (a) : (b) )
+#define aligndown(v,a) (uint8_t*)((intptr_t)(v) & ~((a)-1))
+#define alignup(v,a) (uint8_t*)((intptr_t)((v) + (a)-1) & ~((a)-1))
+
+/* By default, assume machines that don't need alignment. */
+
+#ifndef ALIGNUP
+#define ALIGNUP(v) (v)
+#endif
+
+#ifndef ALIGNDOWN
+#define ALIGNDOWN(v) (v)
+#endif
+
+#ifdef CONFIG_LEVEL_2
+#include "level2.h"
+#else
+
+#define jobcontrol_in(x,y,z)	0
+#define jobcontrol_out(x,y,z)	0
+#define jobcontrol_ioctl(x,y,z)	0
+
+#define limit_exceeded(x,y) (0)
+#define can_signal(p, sig) \
+	(udata.u_ptab->p_uid == (p)->p_uid || super())
+#define pathbuf()	tmpbuf()
+#define pathfree(tb)	brelse(tb)
+#define dump_core(sig)	sig
+#define in_group(x)	0
+#endif
 
 #define CPM_EMULATOR_FILENAME    "/usr/cpm/emulator"
 
@@ -38,13 +69,20 @@ From UZI by Doug Braun and UZI280 by Stefan Nitschke.
 #ifndef PTABSIZE
 #define PTABSIZE 15      /* Process table size. */
 #endif
-
 #ifndef MAPBASE		/* Usually the start of program and map match */
 #define MAPBASE PROGBASE
 #endif
 
+#ifndef NGROUP
+#define NGROUP		16
+#endif
+
+
+#ifndef MAXTICKS
 #define MAXTICKS     10   /* Max ticks before switching out (time slice)
                             default process time slice */
+#endif
+
 // #define MAXBACK      3   /* Process time slice for tasks not connected
 //                             to the current tty */
 // #define MAXBACK2     2   /* Process time slice for background tasks */
@@ -61,14 +99,23 @@ From UZI by Doug Braun and UZI280 by Stefan Nitschke.
 #define NO_DEVICE (0xFFFFU)
 #define NO_FILE   (0xFF)
 
+#if !defined(CONFIG_INDIRECT_QUEUES)
+typedef unsigned char * queueptr_t;
+#endif
+
 typedef struct s_queue {
-    unsigned char *q_base;    /* Pointer to data */
-    unsigned char *q_head;    /* Pointer to addr of next char to read. */
-    unsigned char *q_tail;    /* Pointer to where next char to insert goes. */
+    queueptr_t q_base;    /* Pointer to data */
+    queueptr_t q_head;    /* Pointer to addr of next char to read. */
+    queueptr_t q_tail;    /* Pointer to where next char to insert goes. */
     int   q_size;    /* Max size of queue */
     int   q_count;   /* How many characters presently in queue */
     int   q_wakeup;  /* Threshold for waking up processes waiting on queue */
 } queue_t;
+
+#if !defined CONFIG_INDIRECT_QUEUES
+	#define GETQ(p) (*(p))
+	#define PUTQ(p, v) (*(p) = (v))
+#endif
 
 struct tms {
 	clock_t  tms_utime;
@@ -92,6 +139,7 @@ typedef uint16_t blkno_t;    /* Can have 65536 512-byte blocks in filesystem */
 #define BLKSIZE		512
 #define BLKSHIFT	9
 #define BLKMASK		511
+#define BLKOVERSIZE	25	/* Bits 25+ mean we exceeded the file size */
 
 /* Help the 8bit compilers out by preventing any 32bit promotions */
 #define BLKOFF(x)	(((uint16_t)(x)) & BLKMASK)
@@ -99,7 +147,9 @@ typedef uint16_t blkno_t;    /* Can have 65536 512-byte blocks in filesystem */
 /* we need a busier-than-busy state for superblocks, so that if those blocks
  * are read by userspace through bread() they are not subsequently freed by 
  * bfree() until the filesystem is unmounted */
-typedef enum { BF_FREE=0, BF_BUSY, BF_SUPERBLOCK } bf_busy_t;
+#define BF_FREE		0
+#define BF_BUSY		1
+#define BF_SUPERBLOCK	2
 
 /* FIXME: if we could split the data and the header we could keep blocks
    outside of our kernel data (as ELKS does) which would be a win, but need
@@ -108,9 +158,9 @@ typedef struct blkbuf {
     uint8_t     bf_data[BLKSIZE];    /* This MUST be first ! */
     uint16_t    bf_dev;
     blkno_t     bf_blk;
-    bool        bf_dirty;
-    bf_busy_t   bf_busy;
-    uint16_t    bf_time;         /* LRU time stamp */
+    uint8_t     bf_dirty;	/* bit 0 used */
+    uint8_t     bf_busy;	/* bits 0-1 used */
+    uint16_t    bf_time;        /* LRU time stamp */
 } blkbuf, *bufptr;
 
 /* TODO: consider smaller inodes or clever caching. 2BSD uses small
@@ -130,21 +180,6 @@ typedef struct dinode {
     uint32_t   i_ctime;		/* 24 bytes */
     blkno_t  i_addr[20];
 } dinode;               /* Exactly 64 bytes long! */
-
-struct  stat    /* Really only used by libc */
-{
-	int16_t   st_dev;
-	uint16_t  st_ino;
-	uint16_t  st_mode;
-	uint16_t  st_nlink;
-	uint16_t  st_uid;
-	uint16_t  st_gid;
-	uint16_t  st_rdev;
-	off_t   st_size;
-	uint32_t  st_atime;	/* Break in 2038 */
-	uint32_t  st_mtime;
-	uint32_t  st_ctime;
-};
 
 /* We use the Linux one for compatibility. There's no real Unix 'standard'
    for such things */
@@ -183,15 +218,21 @@ struct hd_geometry {
 
 #define F_MASK  0170000
 
+/* So we can do all our getmode comparisons in 8bit to help the compilers out */
+#define MODE_R(x)	((uint8_t)((x) >> 8))
+
 #define major(x) ((x) >> 8)
 #define minor(x) ((x) & 0xFF)
 
-typedef struct cinode { // note: exists in memory *and* on disk
-    uint16_t   c_magic;           /* Used to check for corruption. */
-    uint16_t   c_dev;             /* Inode's device */
-    uint16_t   c_num;             /* Inode # */
-    dinode     c_node;
-    uint8_t    c_refs;            /* In-core reference count */
+/* In memory inode structure */
+typedef struct cinode {
+    uint16_t   c_magic;         /* Used to check for corruption. */
+    uint16_t   c_dev;           /* Inode's device */
+    uint16_t   c_num;           /* Inode # */
+    dinode     c_node;		/* On disk inode data */
+    uint8_t    c_refs;          /* In-core reference count */
+    uint8_t    c_readers;	/* Count of readers by oft entry */
+    uint8_t    c_writers;	/* Count of writers by oft entry */
     uint8_t    c_flags;           
 #define CDIRTY		0x80	/* Modified flag. */
 #define CRDONLY		0x40	/* On a read only file system */
@@ -224,7 +265,7 @@ typedef struct filesys { // note: exists in mem and on disk
     blkno_t       s_free[FILESYS_TABSIZE];
     int16_t       s_ninode;
     uint16_t      s_inode[FILESYS_TABSIZE];
-    bool          s_fmod;
+    uint8_t       s_fmod;
     uint8_t       s_timeh;	/* bits 32-40: FIXME - wire up */
     uint32_t      s_time;
     blkno_t       s_tfree;
@@ -256,12 +297,9 @@ struct mount {
 /* The sleeping range must be together see swap.c */
 #define P_READY         2    /* Runnable   */
 #define P_SLEEP         3    /* Sleeping; can be awakened by signal */
-#define P_XSLEEP        4    /* Sleeping, don't wake up for signal */
-#define P_PAUSE         5    /* Sleeping for pause(); can wakeup for signal */
-#define P_WAIT          6    /* Executed a wait() */
-#define P_FORKING       7    /* In process of forking; do not mess with */
-#define P_ZOMBIE2       8    /* Exited but code pages still valid. */
-#define P_ZOMBIE        9    /* Exited. */
+#define P_STOPPED       4    /* Sleeping, don't wake up for signal */
+#define P_FORKING       5    /* In process of forking; do not mess with */
+#define P_ZOMBIE        6    /* Exited. */
 
 
 /* 0 is used to mean 'check we could signal this process' */
@@ -338,7 +376,8 @@ typedef struct p_tab {
 #ifdef udata
     struct u_data *p_udata;	/* Udata pointer for platforms using dynamic udata */
 #endif
-    /* Everything below here is overlaid by time info at exit */
+    /* Everything below here is overlaid by time info at exit.
+	 * Make sure it's 32-bit aligned. */
     uint16_t    p_priority;     /* Process priority */
     uint32_t    p_pending;      /* Bitmask of pending signals */
     uint32_t    p_ignored;      /* Bitmask of ignored signals */
@@ -353,6 +392,7 @@ typedef struct p_tab {
 /**HP**/
     uint16_t	p_pgrp;		/* Process group */
     uint8_t	p_nice;
+    uint8_t	p_event;	/* Events */
     usize_t	p_top;		/* Copy of u_top */
 #ifdef CONFIG_PROFIL
     uint8_t	p_profscale;
@@ -360,8 +400,16 @@ typedef struct p_tab {
     uaddr_t	p_profsize;
     uaddr_t	p_profoff;
 #endif    
+#ifdef CONFIG_LEVEL_2
+    uint16_t	p_session;
+#endif
 } p_tab, *ptptr;
 
+/*
+ *	We copy the u_data block between processes when we fork and on some
+ *	platforms it moves. This means that there must be *no* internal pointer
+ *	references to the udata within u_data itself.
+ */
 typedef struct u_data {
     /**** If you change this top section, also update offsets in "kernel.def" ****/
     struct p_tab *u_ptab;       /* Process table pointer */
@@ -373,7 +421,7 @@ typedef struct u_data {
     susize_t    u_retval;       /* Return value from sys call */
     int16_t     u_error;        /* Last error number */
     void *      u_sp;           /* Stores SP when process is switchped */
-    bool        u_ininterrupt;  /* True when the interrupt handler is runnign (prevents recursive interrupts) */
+    bool        u_ininterrupt;  /* True when the interrupt handler is running (prevents recursive interrupts) */
     int8_t      u_cursig;       /* Next signal to be dispatched */
     arg_t       u_argn;         /* First C argument to the system call */
     arg_t       u_argn1;        /* Second C argument */
@@ -382,6 +430,9 @@ typedef struct u_data {
     void *      u_isp;          /* Value of initial sp (argv) */
     usize_t	u_top;		/* Top of memory for this task */
     uaddr_t	u_break;	/* Top of data space */
+#ifdef CONFIG_32BIT
+    uaddr_t	u_codebase;	/* 32bit platform base pointers */
+#endif
     int     (*u_sigvec[NSIGS])(int);   /* Array of signal vectors */
     /**** If you change this top section, also update offsets in "kernel.def" ****/
 
@@ -412,15 +463,34 @@ typedef struct u_data {
     inoptr	u_root;		/* Index into inode table of / */
     inoptr	u_rename;	/* Used in n_open for rename() checking */
     inoptr	u_ctty;		/* Controlling tty */
+
+    /* Temporaries used for block I/O */
+    blkno_t	u_block;	/* Block number */
+    uint16_t	u_blkoff;	/* Offset in block */
+    usize_t	u_nblock;	/* Number of blocks */
+    uint8_t	*u_dptr;	/* Address for I/O */
+
+#ifdef CONFIG_LEVEL_2
+    uint16_t    u_groups[NGROUP]; /* Group list */
+    uint8_t	u_ngroup;
+    uint8_t	u_flags;
+#define U_FLAG_NOCORE		1	/* Set if no core dump */
+    struct rlimit u_rlimit[NRLIMIT];	/* Resource limits */
+#endif
 } u_data;
 
 
 /* This is the user data structure, padded out to 512 bytes with the
  * System Stack.
  */
+
+#ifndef CONFIG_STACKSIZE
+#define CONFIG_STACKSIZE 512
+#endif
+
 typedef struct u_block {
         u_data u_d;
-        char   u_s [512 - sizeof(struct u_data)];
+        char   u_s [CONFIG_STACKSIZE - sizeof(struct u_data)];
 } u_block;
 
 
@@ -434,8 +504,10 @@ struct s_argblk {
 
 
 /* waitpid options */
-#define WNOHANG		1	/* don't support others yet */
-
+#define WNOHANG		1
+#define WUNTRACED	2
+#define _WSTOPPED	0xFF
+#define W_COREDUMP	0x80
 
 /* Open() parameters. */
 
@@ -520,15 +592,39 @@ struct s_argblk {
 #define EALREADY	39		/* Operation already in progress */
 #define EADDRINUSE	40		/* Address already in use */
 #define EADDRNOTAVAIL	41		/* Address not available */
+#define ENOSYS		42		/* No such system call */
+#define EPFNOSUPPORT	43		/* Protocol not supported */
+#define EOPNOTSUPP	44		/* Operation not supported on transport
+                                           endpoint */
+#define ECONNRESET	45		/* Connection reset by peer */
+#define ENETDOWN	46		/* Network is down */
+#define EMSGSIZE	47		/* Message too long */
+
+#define ETIMEDOUT	48		/* Connection timed out */
+#define ECONNREFUSED	49		/* Connection refused */
+#define EHOSTUNREACH	50		/* No route to host */
+#define EHOSTDOWN	51		/* Host is down */
+#define	ENETUNREACH	52		/* Network is unreachable */
+#define ENOTCONN	53		/* Transport endpoint is not connected */
+#define EINPROGRESS	54		/* Operation now in progress */
+#define ESHUTDOWN	55		/* Cannot send after transport endpoint shutdown */
 
 /*
  * ioctls for kernel internal operations start at 0x8000 and cannot be issued
  * by userspace.
  */
 #define SELECT_BEGIN		0x8000
-#define SELECT_END		0x8001
+#define SELECT_TEST		0x8001
+#define SELECT_END		0x8002
 
-#define IOCTL_SUPER		0x4000	/* superuser needed */
+#define IOCTL_NORMAL		0x0000	/* No special rules */
+#define IOCTL_SUPER		0x4000	/* Superuser needed */
+#define IOCTL_KERNEL		0x8000	/* Kernel side only */
+#define IOCTL_WRONLY		0xC000	/* Write handle needed */
+
+#define IOCTL_CLASS_SUPER	0x40
+#define IOCTL_CLASS_KERNEL	0x80
+#define IOCTL_CLASS_WRONLY	0xC0
 
 /*
  *	Ioctl ranges
@@ -547,7 +643,8 @@ struct s_argblk {
 #define HDIO_GETGEO		0x0101
 #define HDIO_GET_IDENTITY	0x0102	/* Not yet implemented anywhere */
 #define BLKFLSBUF		0x4103	/* Use the Linux name */
-
+#define HDIO_RAWCMD		0x4104	/* Issue a raw command, ioctl data
+					   is device dependant ! */
 /*
  *	Sound ioctls 02xx (see audio.h)
  */
@@ -558,23 +655,17 @@ struct s_argblk {
  */
 
 /*
+ *	Networking ioctls 04xx (see net_native.h)
+ */
+
+/*
+ *	Drivewire ioctls 050x (see drivewire.h)
+ */
+
+/*
  *	System info shared with user space
  */
-struct sysinfoblk {
-  uint8_t infosize;		/* For expandability */
-  uint8_t banks;		/* Banks in our 64K (and thus pagesize) */
-  uint8_t max_open;
-  uint8_t nproc;		/* Number of processes */
-  uint16_t ticks;		/* Tick rate in HZ */
-  uint16_t memk;		/* Memory in KB */
-  uint16_t usedk;		/* Used memory in KB */
-  uint16_t config;		/* Config flag mask */
-#define CONF_PROFIL		1
-#define CONF_NET		2	/* Hah.. 8) */
-  uint16_t loadavg[3];
-  uint32_t spare2;
-    			        /* Followed by uname strings */
-};
+#include <sysinfoblk.h>
 
 /* Select: if we do the map optimisation trick then we will want one bit free
    for optimising, so ideal PTABSIZE will become 1 below a multiple of 8 */
@@ -605,21 +696,31 @@ extern usize_t valaddr(const char *base, usize_t size);
 extern int uget(const void *userspace_source, void *dest, usize_t count);
 extern int16_t  ugetc(const void *userspace_source);
 extern uint16_t ugetw(const void *userspace_source);
+extern uint32_t _ugetl(void *uaddr);
 extern int ugets(const void *userspace_source, void *dest, usize_t maxlen);
 extern int uput (const void *source,   void *userspace_dest, usize_t count);
 extern int uputc(uint16_t value,  void *userspace_dest);	/* u16_t so we don't get wacky 8bit stack games */
 extern int uputw(uint16_t value, void *userspace_dest);
+extern int _uputl(uint32_t val, void *uaddr);
 extern int uzero(void *userspace_dest, usize_t count);
 
 /* usermem.c or usermem_std.s */
 extern usize_t _uget(const uint8_t *user, uint8_t *dst, usize_t count);
+extern int _uput(const uint8_t *source, uint8_t *user, usize_t count);
+extern int _ugets(const uint8_t *user, uint8_t *dest, usize_t maxlen);
+extern int _uzero(uint8_t *user, usize_t count);
+
+#if defined CONFIG_USERMEM_DIRECT
+#define _ugetc(p) (*(uint8_t*)(p))
+#define _ugetw(p) (*(uint16_t*)(p))
+#define _uputc(v, p) ((*(uint8_t*)(p) = (v)), 0)
+#define _uputw(v, p) ((*(uint16_t*)(p) = (v)), 0)
+#else
 extern int16_t _ugetc(const uint8_t *user);
 extern uint16_t _ugetw(const uint16_t *user);
-extern int _ugets(const uint8_t *user, uint8_t *dest, usize_t maxlen);
-extern int _uput(const uint8_t *source, uint8_t *user, usize_t count);
 extern int _uputc(uint16_t value,  uint8_t *user);
 extern int _uputw(uint16_t value,  uint16_t *user);
-extern int _uzero(uint8_t *user, usize_t count);
+#endif
 
 /* platform/tricks.s */
 extern void switchout(void);
@@ -629,6 +730,7 @@ extern int16_t dofork(ptptr child);
 extern uint8_t need_resched;
 
 /* devio.c */
+extern void validchk(uint16_t dev, const char *p);
 extern uint8_t *bread (uint16_t dev, blkno_t blk, bool rewrite);
 extern void brelse(void *bp);
 extern void bawrite(void *bp);
@@ -649,11 +751,13 @@ extern int d_open(uint16_t dev, uint8_t flag);
 extern int d_close(uint16_t dev);
 extern int d_ioctl(uint16_t dev, uint16_t request, char *data);
 extern int d_flush(uint16_t dev);
+extern int d_blkoff(uint8_t bits);
 extern int cdwrite(uint16_t dev, uint8_t flag);
 extern bool insq(struct s_queue *q, unsigned char c);
 extern bool remq(struct s_queue *q, unsigned char *cp);
 extern void clrq(struct s_queue *q);
 extern bool uninsq(struct s_queue *q, unsigned char *cp);
+extern int psleep_flags_io(void *event, unsigned char flags, usize_t *n);
 extern int psleep_flags(void *event, unsigned char flags);
 extern int nxio_open(uint8_t minor, uint16_t flag);
 extern int no_open(uint8_t minor, uint16_t flag);
@@ -701,18 +805,20 @@ extern bool super(void);
 extern bool esuper(void);
 extern uint8_t getperm(inoptr ino);
 extern void setftime(inoptr ino, uint8_t flag);
-extern uint16_t getmode(inoptr ino);
+extern uint8_t getmode(inoptr ino);
 extern struct mount *fs_tab_get(uint16_t dev);
 /* returns true on failure, false on success */
 extern bool fmount(uint16_t dev, inoptr ino, uint16_t flags);
 extern void magic(inoptr ino);
+extern arg_t unlinki(inoptr ino, inoptr pino, char *fname);
 
 /* inode.c */
 extern void readi(inoptr ino, uint8_t flag);
 extern void writei(inoptr ino, uint8_t flag);
 extern int16_t doclose (uint8_t uindex);
 extern inoptr rwsetup (bool is_read, uint8_t *flag);
-extern int dev_openi(inoptr *ino, uint8_t flag);
+extern int dev_openi(inoptr *ino, uint16_t flag);
+extern void sync(void);
 
 /* mm.c */
 extern unsigned int uputsys(unsigned char *from, usize_t size);
@@ -725,43 +831,42 @@ extern void pwake(ptptr p);
 extern ptptr getproc(void);
 extern void newproc(ptptr p);
 extern ptptr ptab_alloc(void);
-extern void ssig(ptptr proc, uint16_t sig);
-extern void chksigs(void);
+extern void ssig(ptptr proc, uint8_t sig);
+extern uint8_t chksigs(void);
 extern void program_vectors(uint16_t *pageptr);
-extern void sgrpsig(uint16_t pgrp, uint16_t sig);
+extern void sgrpsig(uint16_t pgrp, uint8_t sig);
 extern void unix_syscall(void);
 extern void timer_interrupt(void);
-extern void doexit (int16_t val, int16_t val2);
+extern void doexit (uint16_t val);
 extern void panic(char *deathcry);
 extern void exec_or_die(void);
-#define need_resched() (nready != 1 && runticks >= udata.u_ptab->p_priority)
+#define need_reschedule() (nready != 1 && runticks >= udata.u_ptab->p_priority)
 
 
 /* select.c */
+#ifdef CONFIG_LEVEL_2
 extern void seladdwait(struct selmap *s);
 extern void selrmwait(struct selmap *s);
 extern void selwake(struct selmap *s);
-#ifdef CONFIG_SELECT
-extern int selwait_inode(inoptr i, uint8_t smask, uint8_t setit);
+extern void selwait_inode(inoptr i, uint8_t smask, uint8_t setit);
 extern void selwake_inode(inoptr i, uint16_t mask);
 extern void selwake_pipe(inoptr i, uint16_t mask);
-extern int _select(void);
+extern void selwake_dev(uint8_t major, uint8_t minor, uint16_t mask);
+extern arg_t _select(void);
 #else
 #define selwait_inode(i,smask,setit) do {} while(0)
-#define selwake_inode(i,smask,setit) do {} while(0)
-#define selwake_pipe(i,smask,setit) do {} while(0)
+#define selwake_inode(i,smask) do {} while(0)
+#define selwake_pipe(i,smask) do {} while(0)
+#define selwake_dev(major,minor,smask) do {} while(0)
 #endif
 
 /* swap.c */
 extern uint16_t swappage;
-extern uint8_t *swapbase;
-extern unsigned int swapcnt;
-extern blkno_t swapblk;
 
-extern int swapread(uint16_t dev, blkno_t blkno, unsigned int nbytes,
-                    uint16_t buf, uint16_t page);
-extern int swapwrite(uint16_t dev, blkno_t blkno, unsigned int nbytes,
-		     uint16_t buf, uint16_t page);
+extern int swapread(uint16_t dev, blkno_t blkno, usize_t nbytes,
+                    uaddr_t buf, uint16_t page);
+extern int swapwrite(uint16_t dev, blkno_t blkno, usize_t nbytes,
+		     uaddr_t buf, uint16_t page);
 
 extern void swapmap_add(uint8_t swap);
 extern int swapmap_alloc(void);
@@ -792,11 +897,25 @@ extern void pagemap_add(uint8_t page);	/* FIXME: may need a page type for big bo
 extern void pagemap_free(ptptr p);
 extern int pagemap_alloc(ptptr p);
 extern int pagemap_realloc(usize_t p);
-extern uaddr_t pagemap_mem_used(void);
+extern usize_t pagemap_mem_used(void);
 extern void map_init(void);
+#ifndef platform_discard
+extern void platform_discard(void);
+#endif
 extern void platform_idle(void);
 extern uint8_t rtc_secs(void);
 extern void trap_reboot(void);
+extern uint8_t platform_param(char *p);
+
+extern irqflags_t __hard_di(void);
+extern void __hard_irqrestore(irqflags_t f);
+extern void __hard_ei(void);
+
+#ifndef CONFIG_SOFT_IRQ
+#define di __hard_di
+#define irqrestore __hard_irqrestore
+#define ei __hard_ei
+#endif
 
 /* Will need a uptr_t eventually */
 extern uaddr_t ramtop;	     /* Note: ramtop must be in common in some cases */
@@ -855,18 +974,21 @@ extern arg_t _fcntl(void);        /* FUZIX system call 47 */
 extern arg_t _fchdir(void);       /* FUZIX system call 48 */
 extern arg_t _fchmod(void);       /* FUZIX system call 49 */
 extern arg_t _fchown(void);       /* FUZIX system call 50 */
-extern arg_t _mkdir(void);	 /* FUZIX system call 51 */
+extern arg_t _mkdir(void);	  /* FUZIX system call 51 */
 extern arg_t _rmdir(void);        /* FUZIX system call 52 */
-extern arg_t _setpgrp(void);	 /* FUZIX system call 53 */
-extern arg_t _uname(void);	 /* FUZIX system call 54 */
-extern arg_t _waitpid(void);	 /* FUZIX system call 55 */
-extern arg_t _profil(void);	 /* FUZIX system call 56 */
-extern arg_t _uadmin(void);	 /* FUZIX system call 57 */
+extern arg_t _setpgrp(void);	  /* FUZIX system call 53 */
+extern arg_t _uname(void);	  /* FUZIX system call 54 */
+extern arg_t _waitpid(void);	  /* FUZIX system call 55 */
+extern arg_t _profil(void);	  /* FUZIX system call 56 */
+extern arg_t _uadmin(void);	  /* FUZIX system call 57 */
 extern arg_t _nice(void);         /* FUZIX system call 58 */
-extern arg_t _sigdisp(void);	 /* FUZIX system call 59 */
-extern arg_t _flock(void);	 /* FUZIX system call 60 */
-extern arg_t _getpgrp(void);	 /* FUZIX system call 61 */
+extern arg_t _sigdisp(void);	  /* FUZIX system call 59 */
+extern arg_t _flock(void);	  /* FUZIX system call 60 */
+extern arg_t _getpgrp(void);	  /* FUZIX system call 61 */
 extern arg_t _sched_yield(void);  /* FUZIX system call 62 */
+extern arg_t _acct(void);	  /* FUZIX system call 63 */
+extern arg_t _memalloc(void);	  /* FUZIX system call 64 */
+extern arg_t _memfree(void);	  /* FUZIX system call 65 */
 
 #if defined(CONFIG_32BIT)
 #include "kernel32.h"

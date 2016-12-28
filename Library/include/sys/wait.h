@@ -28,7 +28,7 @@
 #define WIFSTOPPED(status)	(((status) & 0xff) == 0x7f)
 
 /* Nonzero if STATUS indicates the child dumped core.  */
-#define WCOREDUMP(status)	((status) & 0200)
+#define WCOREDUMP(status)	((status) & 0x80)
 
 /* Macros for constructing status values.  */
 #define W_EXITCODE(ret, sig)	((ret) << 8 | (sig))
@@ -38,7 +38,7 @@
 #define WAIT_ANY	(-1)	/* Any process.  */
 #define WAIT_MYPGRP	0	/* Any process in my process group.  */
 
-extern pid_t waitpid __P((pid_t pid, int *__stat_loc, int options));
+extern pid_t waitpid(pid_t __pid, int *__stat_loc, int __options);
 
 /* Wait for a child to die.  When one does, put its status in *STAT_LOC
    and return its process ID.  For errors, return (pid_t) -1.

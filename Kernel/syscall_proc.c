@@ -158,8 +158,9 @@ arg_t _time(void)
 
 
 /*******************************************
-stime (tvec)                     Function 28
+stime (tvec, type)               Function 28
 time_t *tvec;
+uint16_t type;
 ============================================
 Set Clock Time (Currently unimplemented).
 When active, must be SuperUser to Set Time.
@@ -174,10 +175,10 @@ arg_t _stime(void)
 		udata.u_error = EINVAL;
 		return -1;
 	}
-	if (uget(&t, tvec, sizeof(t)) || esuper())
+	if (uget(tvec, &t, sizeof(t)) || esuper())
 		return -1;
 	wrtime(&t);
-	return (-1);
+	return (0);
 }
 
 #undef tvec
@@ -302,21 +303,26 @@ arg_t _waitpid(void)
 			return -1;
 		}
 		for (p = ptab; p < ptab_end; ++p) {
-			if (p->p_status == P_ZOMBIE
-			    && p->p_pptr == udata.u_ptab) {
-				if (pid == -1 || p->p_pid == pid
-				    || p->p_pgrp == -pid) {
+			if (p->p_pptr == udata.u_ptab &&
+				(pid == -1 || p->p_pid == pid ||
+					p->p_pgrp == -pid)) {
+				if (p->p_status == P_ZOMBIE) {
 					if (statloc)
-						uputw(p->p_exitval,
-						      statloc);
-
+						uputi(p->p_exitval, statloc);
 					retval = p->p_pid;
 					p->p_status = P_EMPTY;
 
 					/* Add in child's time info.  It was stored on top */
 					/* of p_priority in the childs process table entry. */
-					udata.u_cutime += ((clock_t *)p->p_priority)[0];
-					udata.u_cstime += ((clock_t *)p->p_priority)[1];
+					/* FIXME: make these a union so we don't do type
+					   punning and break strict aliasing */
+					udata.u_cutime += ((clock_t *)&p->p_priority)[0];
+					udata.u_cstime += ((clock_t *)&p->p_priority)[1];
+					return retval;
+				}
+				if (p->p_event && (options & WUNTRACED)) {
+					retval = (uint16_t)p->p_event << 8 | _WSTOPPED;
+					p->p_event = 0;
 					return retval;
 				}
 			}
@@ -342,15 +348,18 @@ int16_t val;
 
 arg_t __exit(void)
 {
-	doexit(val, 0);
+	/* Deliberately chop to 8bits */
+	doexit(val << 8);
 	return 0;		// ... yeah. that might not happen.
 }
 
 #undef val
 
 /*******************************************
-fork ()                          Function 32
+_fork (flags, addr)              Function 32
 ********************************************/
+#define flags (int16_t)udata.u_argn
+#define addr (uaddr_t)udata.u_argn1
 
 arg_t _fork(void)
 {
@@ -359,16 +368,30 @@ arg_t _fork(void)
 	arg_t r;
 	irqflags_t irq;
 
+	if (flags) {
+		udata.u_error = EINVAL;
+		return -1;
+	}
+
 	new_process = ptab_alloc();
 	if (!new_process)
 		return -1;
 
 	irq = di();
-	// we're going to run our child process next, so mark this process as being ready to run
+	/*
+	 * We're going to run our child process next, so mark this process as
+	 * being ready to run
+	 */
 	udata.u_ptab->p_status = P_READY;
-	// kick off the new process (the bifurcation happens inside here, we returns in both 
-	// the child and parent contexts)
+	/*
+	 * Kick off the new process (the bifurcation happens inside here, we
+	 * *MAY* returns in both the child and parent contexts, however in a
+	 * non error case the child may also directly return to userspace
+	 * with the return code of 0 and not return from here. Do not assume
+	 * you can execute any child code reliably beyond this call.)
+	 */
 	r = dofork(new_process);
+
 #ifdef DEBUG
 	kprintf("Dofork %x (n %x)returns %d\n", udata.u_ptab,
 		new_process, r);
@@ -390,6 +413,7 @@ arg_t _fork(void)
 	return r;
 }
 
+#undef flags
 
 
 /*******************************************
@@ -512,7 +536,7 @@ arg_t _kill(void)
 		/* No overlap here */
 		if (-p->p_pgrp == pid || p->p_pid == pid) {
 			f = 1;	/* Found */
-			if (udata.u_ptab->p_uid == p->p_uid || super()) {
+			if (can_signal(p, sig)) {
 				if (sig)
 					ssig(p, sig);
 				s = 1;	/* Signalled */
@@ -559,9 +583,16 @@ setpgrp (void)                    Function 53
 
 arg_t _setpgrp(void)
 {
+#ifdef CONFIG_LEVEL_2
+	/* For full session management it's a shade
+	   more complicated and we have the routine
+	   to do the full job */
+	return _setsid();
+#else
 	udata.u_ptab->p_pgrp = udata.u_ptab->p_pid;
 	udata.u_ptab->p_tty = 0;
-	return (0);
+	return 0;
+#endif	
 }
 
 /********************************************

@@ -1,8 +1,7 @@
 
 CSRCS = devlpr.c devtty.c devfd.c
 CSRCS += devices.c main.c libc.c
-
-DSRCS = ../dev/devdw.c
+CSRCS += ../dev/devdw.c
 
 ASRCS = p6809.s crt0.s drivewire.s
 ASRCS += tricks.s commonmem.s usermem_sam.s floppy.s
@@ -34,14 +33,14 @@ d64_1.rom: setup.s
 	lwasm -r -o d64_1.rom setup.s
 
 image: d64_1.rom
-	$(CROSS_LD) -o ../fuzix.bin --map=../fuzix.map --script=fuzix.link \
+	$(CROSS_LD) -o ../fuzix.bin -Map=../fuzix.map --script=fuzix.link --oformat=decb \
 	crt0.o commonmem.o usermem_sam.o \
 	p6809.o ../start.o ../version.o ../lowlevel-6809.o \
 	tricks.o main.o ../timer.o ../kdata.o devfd.o floppy.o devices.o \
 	drivewire.o devdw.o \
 	../devio.o ../filesys.o ../process.o ../inode.o ../syscall_fs.o \
 	../syscall_proc.o ../syscall_other.o ../mm.o ../swap.o ../simple.o \
-	../tty.o ../devsys.o ../usermem.o ../syscall_fs2.o ../syscall_exec16.o \
-	devlpr.o devtty.o libc.o ../vt.o
+	../tty.o ../devsys.o ../usermem.o ../syscall_fs2.o ../syscall_fs3.o \
+	../syscall_exec16.o devlpr.o devtty.o libc.o ../vt.o
 	../tools/decbdragon < ../fuzix.bin d64_1.decb d64_2.rom cart1.rom cart2.rom
 	dd if=d64_1.decb of=d64_1.rom bs=1024 seek=1 conv=notrunc

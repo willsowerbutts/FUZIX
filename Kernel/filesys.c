@@ -8,6 +8,8 @@
  * did not exist.  If the parent existed, and parent is not null,
  * parent will be filled in with the parents inoptr. Otherwise, parent
  * will be set to NULL.
+ *
+ * FIXME: ENAMETOOLONG might be good to add
  */
 
 inoptr n_open(char *uname, inoptr *parent)
@@ -15,7 +17,7 @@ inoptr n_open(char *uname, inoptr *parent)
     inoptr r;
     char *tb;
 
-    tb = (char*)tmpbuf(); /* temporary memory to hold kernel's copy of the filename */
+    tb = (char*)pathbuf(); /* temporary memory to hold kernel's copy of the filename */
 
     if (ugets(uname, tb, 512) == -1) {
         udata.u_error = EFAULT;
@@ -29,7 +31,7 @@ inoptr n_open(char *uname, inoptr *parent)
 
     r = kn_open(tb, parent);
 
-    brelse(tb);
+    pathfree(tb);
 
     return r;
 }
@@ -77,7 +79,7 @@ inoptr kn_open(char *namep, inoptr *parent)
         }
         i_deref(wd);
         wd = ninode;
-        if(getmode(wd) != F_DIR){
+        if(getmode(wd) != MODE_R(F_DIR)){
             udata.u_error = ENOTDIR;
             goto nodir;
         }
@@ -191,8 +193,7 @@ inoptr i_open(uint16_t dev, uint16_t ino)
     struct mount *m;
     bool isnew = false;
 
-    if(!validdev(dev))
-        panic("i_open: bad dev");
+    validchk(dev, PANIC_IOPEN);
 
     if(!ino){        /* ino==0 means we want a new one */
         isnew = true;
@@ -273,6 +274,8 @@ bool ch_link(inoptr wd, char *oldname, char *newname, inoptr nindex)
         udata.u_error = EROFS;
         return false;
     }
+    /* FIXME: for modern style permissions we should also check whether
+       wd has the sticky bit set and if so require ownership or root */
     if(!(getperm(wd) & OTH_WR))
     {
         udata.u_error = EACCES;
@@ -300,8 +303,10 @@ bool ch_link(inoptr wd, char *oldname, char *newname, inoptr nindex)
             break;
     }
 
-    if(udata.u_count == 0 && *oldname)
+    if(udata.u_count == 0 && *oldname) {
+        udata.u_error = ENOENT;
         return false;                  /* Entry not found */
+    }
 
     memcpy(curentry.d_name, newname, FILENAME_LEN);
     // pad name with NULLs
@@ -356,10 +361,17 @@ void filename(char *userspace_upath, char *name)
         return;          /* An access violation reading the name */
     }
     ptr = buf;
+    /* Find the end of the buffer */
     while(*ptr)
         ++ptr;
-    /* Special case for "...name.../" */
+    /* Special case for "...name.../". SuS requires that mkdir foo/ works
+       (see the clarifications to the standard) */
+    if (*--ptr == '/')
+        *ptr-- = 0;
+    /* Walk back until we drop off the start of the buffer or find the
+       slash */
     while(*ptr != '/' && ptr-- > buf);
+    /* And move past the slash, or not the string start */
     ptr++;
     memcpy(name, ptr, FILENAME_LEN);
     brelse(buf);
@@ -401,31 +413,43 @@ inoptr newfile(inoptr pino, char *name)
     inoptr nindex;
     uint8_t j;
 
+    /* No parent? */
+    if (!pino) {
+        udata.u_error = ENXIO;
+        goto nogood;
+    }
+
     /* First see if parent is writeable */
     if (pino->c_flags & CRDONLY) {
         udata.u_error = EROFS;
         goto nogood;
     }
 
-    if(!(getperm(pino) & OTH_WR))
+    if (!(getperm(pino) & OTH_WR)) {
+        udata.u_error = EPERM;
         goto nogood;
+    }
 
-    if(!(nindex = i_open(pino->c_dev, 0)))
+    if (!(nindex = i_open(pino->c_dev, 0))) {
+        udata.u_error = ENFILE;
         goto nogood;
+    }
 
-    /* BUG FIX:  user/group setting was missing  SN */
+    /* This does not implement BSD style "sticky" groups */
     nindex->c_node.i_uid = udata.u_euid;
     nindex->c_node.i_gid = udata.u_egid;
 
     nindex->c_node.i_mode = F_REG;   /* For the time being */
     nindex->c_node.i_nlink = 1;
     nindex->c_node.i_size = 0;
-    for(j=0; j <20; j++)
+    for (j = 0; j < 20; j++) {
         nindex->c_node.i_addr[j] = 0;
+    }
     wr_inode(nindex);
 
-    if(!ch_link(pino, "", name, nindex)) {
+    if (!ch_link(pino, "", name, nindex)) {
         i_deref(nindex);
+	/* ch_link sets udata.u_error */
         goto nogood;
     }
     i_deref(pino);
@@ -451,7 +475,7 @@ fsptr getdev(uint16_t dev)
     mnt = fs_tab_get(dev);
 
     if (!mnt || !(devfs = mnt->m_fs) || devfs->s_mounted == 0) {
-        panic("getdev: bad dev");
+        panic(PANIC_GD_BAD);
         /* Return needed to persuade SDCC all is ok */
         return NULL;
     }
@@ -481,7 +505,6 @@ uint16_t i_alloc(uint16_t devno)
 {
     staticfast fsptr dev;
     staticfast blkno_t blk;
-    staticfast struct mount *m;
     struct dinode *buf;
     staticfast uint16_t j;
     uint16_t k;
@@ -489,7 +512,6 @@ uint16_t i_alloc(uint16_t devno)
 
     if(baddev(dev = getdev(devno)))
         goto corrupt;
-    m = fs_tab_get(devno);
 
 tryagain:
     if(dev->s_ninode) {
@@ -549,7 +571,7 @@ void i_free(uint16_t devno, uint16_t ino)
         return;
 
     if(ino < 2 || ino >=(dev->s_isize-2)*8)
-        panic("i_free: bad ino");
+        panic(PANIC_IFREE_BADI);
 
     ++dev->s_tinode;
     if(dev->s_ninode < FILESYS_TABSIZE)
@@ -739,7 +761,7 @@ void i_deref(inoptr ino)
     magic(ino);
 
     if(!ino->c_refs)
-        panic("inode freed.");
+        panic(PANIC_INODE_FREED);
 
     if((ino->c_node.i_mode & F_MASK) == F_PIPE)
         wakeup((char *)ino);
@@ -869,7 +891,7 @@ blkno_t bmap(inoptr ip, blkno_t bn, int rwflg)
     int sh;
     uint16_t dev;
 
-    if(getmode(ip) == F_BDEV)
+    if(getmode(ip) == MODE_R(F_BDEV))
         return(bn);
 
     dev = ip->c_dev;
@@ -950,12 +972,12 @@ void validblk(uint16_t dev, blkno_t num)
     mnt = fs_tab_get(dev);
 
     if(mnt == NULL || !(devptr = mnt->m_fs) || devptr->s_mounted == 0) {
-        panic("validblk: not mounted");
+        panic(PANIC_VALIDBLK_NM);
         return;
     }
 
     if(num < devptr->s_isize || num >= devptr->s_fsize)
-        panic("validblk: invalid blk");
+        panic(PANIC_VALIDBLK_INV);
 }
 
 
@@ -975,10 +997,10 @@ inoptr getinode(uint8_t uindex)
     oftindex = udata.u_files[uindex];
 
     if(oftindex >= OFTSIZE || oftindex == NO_FILE)
-        panic("getinode: bad desc table");
+        panic(PANIC_GETINO_BADT);
 
     if((inoindex = of_tab[oftindex].o_inode) < i_tab || inoindex >= i_tab+ITABSIZE)
-        panic("getinode: bad OFT");
+        panic(PANIC_GETINO_OFT);
 
     magic(inoindex);
     return(inoindex);
@@ -1016,6 +1038,11 @@ uint8_t getperm(inoptr ino)
         mode >>= 6;
     else if(ino->c_node.i_gid == udata.u_egid)
         mode >>= 3;
+#ifdef CONFIG_LEVEL_2
+    /* BSD process groups */
+    else if (in_group(ino->c_node.i_gid))
+        mode >>= 3;
+#endif
 
     return(mode & 07);
 }
@@ -1039,9 +1066,11 @@ void setftime(inoptr ino, uint8_t flag)
 }
 
 
-uint16_t getmode(inoptr ino)
+uint8_t getmode(inoptr ino)
 {
-    return(ino->c_node.i_mode & F_MASK);
+    /* Shifting by 9 (past permissions) might be more logical but
+       8 happens to be cheap */
+    return (ino->c_node.i_mode & F_MASK) >> 8;
 }
 
 
@@ -1069,7 +1098,7 @@ struct mount *fs_tab_get(uint16_t dev)
     return NULL;
 }
 
-/* Fmount places the given device in the mount table with mount point ino.
+/* Fmount places the given device in the mount table with mount point info.
 */
 bool fmount(uint16_t dev, inoptr ino, uint16_t flags)
 {
@@ -1077,7 +1106,7 @@ bool fmount(uint16_t dev, inoptr ino, uint16_t flags)
     struct filesys *fp;
 
     if(d_open(dev, 0) != 0)
-        panic("fmount: can't open filesystem");
+        panic(PANIC_FMOUNT_NOPEN);
 
     m = newfstab();
     if (m == NULL) {
@@ -1116,5 +1145,29 @@ bool fmount(uint16_t dev, inoptr ino, uint16_t flags)
 void magic(inoptr ino)
 {
     if(ino->c_magic != CMAGIC)
-        panic("corrupt inode");
+        panic(PANIC_CORRUPTI);
 }
+
+/* This is a helper function used by _unlink and _rename; it doesn't really
+ * belong here, but needs to be in common code as it's used from two different
+ * syscall banks. */
+arg_t unlinki(inoptr ino, inoptr pino, char *fname)
+{
+	if (getmode(ino) == MODE_R(F_DIR)) {
+		udata.u_error = EISDIR;
+		return -1;
+	}
+
+	/* Remove the directory entry (ch_link checks perms) */
+	if (!ch_link(pino, fname, "", NULLINODE))
+		return -1;
+
+	/* Decrease the link count of the inode */
+	if (!(ino->c_node.i_nlink--)) {
+		ino->c_node.i_nlink += 2;
+		kprintf("_unlink: bad nlink\n");
+	}
+	setftime(ino, C_TIME);
+	return (0);
+}
+

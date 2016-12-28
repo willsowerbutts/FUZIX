@@ -9,6 +9,12 @@
 	.globl _clear_lines
 	.globl _cursor_on
 	.globl _cursor_off
+	.globl _vtattr_notify
+
+	.globl _video_read
+	.globl _video_write
+	.globl _video_cmd
+
 	;
 	; Imports
 	;
@@ -328,7 +334,86 @@ _cursor_off:
 	com 192,x
 	com 224,x
 nocursor:
+_vtattr_notify:
 	rts
+;
+;	These routines wortk in both 256x192x2 and 128x192x4 modes
+;	because everything in the X plane is bytewide.
+;
+_video_write:
+	clra			; clr C
+	bra	tfr_cmd
+_video_read:
+	coma			; set C
+	bra	tfr_cmd		; go
+
+;;; This does the job of READ & WRITE
+;;;   takes: C = direction 0=write, 1=read
+;;;   takes: X = transfer buffer ptr + 2
+tfr_cmd:
+	pshs	u,y		; save regs
+	orcc	#$10		; turn off interrupt - int might remap kernel
+	ldd	#$80c0		; this is writing
+	bcc	c@		; if carry clear then keep D write
+	exg	a,b		; else flip D: now is reading
+c@	sta	b@+1		; !!! self modify inner loop
+	stb	b@+3		; !!!  
+	bsr	vidptr		; U = screen addr
+	tfr	x,y		; Y = ptr to Height, width
+	leax	4,x		; X = pixel data
+	;; outter loop: iterate over pixel rows
+a@	lda	3,y		; count = width
+	pshs	u		; save screen ptr
+	;; inner loop: iterate over columns
+	;; modify mod+1 and mod+3 to switch directions
+b@	ldb	,x+		; get a byte from src
+	stb	,u+		; save byte to dest
+	deca			; bump counter
+	bne	b@		; loop
+	;; increment outer loop
+	puls	u		; restore original screen ptr
+	leau	32,u		; add byte span of screen (goto next line)
+	dec	1,y		; bump row counter
+	bne	a@		; loop
+	puls	u,y,pc		; restore regs, return
+	
+
+;
+;	Find the address we need on a pixel row basis
+;
+vidptr:
+	ldu #VIDEO_BASE
+	ldd ,x++		; Y into B
+	lda #32
+	mul
+	leau d,u
+	ldd ,x++		; X
+	leau d,u
+	rts
+
+_video_cmd:
+	pshs u
+	bsr vidptr		; u now points to the screen
+nextline:
+	pshs u			; save it for the next line
+nextop:
+	ldb ,x+			; op code, 0 = end of line
+	beq endline
+oploop:
+	lda ,u			; do one screen byte
+	anda ,x
+	eora 1,x
+	sta ,u+
+	decb
+	bne oploop		; keep going for run
+	leax 2,x
+	bra nextop		; next triplet
+endline:
+	puls u			; get position back
+	leau 32,u		; down one scan line
+	ldb ,x+			; get next op - 0,0 means end and done
+	bne oploop
+	puls u,pc
 
 	.area .data
 cursor_save:

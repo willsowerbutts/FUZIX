@@ -141,21 +141,33 @@ struct termios {
 #define TIOCHANGUP	7	/* vhangup() */
 #define TIOCOSTOP	8
 #define TIOCOSTART	9
+#define TIOCGWINSZ	10
+#define TIOCSWINSZ	11
+#define TIOCGPGRP	12
+#define TIOCSPGRP	13
 
-extern speed_t cfgetispeed __P ((const struct termios *__termios_p));
-extern speed_t cfgetospeed __P ((const struct termios *__termios_p));
-extern int cfsetispeed __P ((struct termios *__termios_p, speed_t __speed));
-extern int cfsetospeed __P ((struct termios *__termios_p, speed_t __speed));
 
-extern void cfmakeraw  __P ((struct termios *__t));
+struct winsize {
+    unsigned short ws_row;
+    unsigned short ws_col;
+    unsigned short ws_xpixel;
+    unsigned short ws_ypixel;
+};
 
-extern int tcsetattr __P ((int __fd, int __opt, const struct termios *__termios_p));
-extern int tcgetattr __P ((int __fildes, struct termios *__termios_p));
-extern int tcdrain __P ((int __fildes));
-extern int tcflow __P ((int __fildes, int __action));
-extern int tcflush __P ((int __fildes, int __queue_selector));
-extern int tcsendbreak __P ((int __fildes, int __duration));
-extern int tcgetpgrp __P ((int __fildes));
-extern int tcsetpgrp __P ((int __fildes, int __pgrp_id));
+extern speed_t cfgetispeed(const struct termios *__termios_p);
+extern speed_t cfgetospeed(const struct termios *__termios_p);
+extern int cfsetispeed(struct termios *__termios_p, speed_t __speed);
+extern int cfsetospeed(struct termios *__termios_p, speed_t __speed);
+
+extern void cfmakeraw (struct termios *__t);
+
+extern int tcsetattr(int __fd, int __opt, const struct termios *__termios_p);
+extern int tcgetattr(int __fildes, struct termios *__termios_p);
+extern int tcdrain(int __fildes);
+extern int tcflow(int __fildes, int __action);
+extern int tcflush(int __fildes, int __queue_selector);
+extern int tcsendbreak(int __fildes, int __duration);
+extern int tcgetpgrp(int __fildes);
+extern int tcsetpgrp(int __fildes, int __pgrp_id);
 
 #endif

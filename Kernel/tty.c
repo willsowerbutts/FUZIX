@@ -4,30 +4,38 @@
 #include <stdbool.h>
 #include <tty.h>
 
-#undef  DEBUG			/* UNdefine to delete debug code sequences */
-
 /*
  *	Minimal Terminal Interface
  *
  *	TODO:
- *	- VTIME timeout support
- *	- Blocking open
- *	- Hangup
- *	- Invoke device side helpers
  *	- Parity
  *	- Various misc minor flags
- *	- Better /dev/tty handling
- *	- BSD ^Z handling and tty sessions eventually
- *	- Flow control
+ *	- Software Flow control
+ *	- Don't echo EOF char ?
  *
  *	Add a small echo buffer to each tty
  */
 
 struct tty ttydata[NUM_DEV_TTY + 1];	/* ttydata[0] is not used */
 
+#ifdef CONFIG_LEVEL_2
+static uint16_t tty_select;		/* Fast path if no selects, could do with being per tty ? */
+
+/* Might be worth tracking tty minor <> inode for performance FIXME */
+static void tty_selwake(uint8_t minor, uint16_t event)
+{
+	if (tty_select) {
+		/* 2 is the tty devices */
+		selwake_dev(2, minor, event);
+	}
+}
+#else
+#define tty_selwake(a,b)	do {} while(0)
+#endif
+
 int tty_read(uint8_t minor, uint8_t rawflag, uint8_t flag)
 {
-	uint16_t nread;
+	usize_t nread;
 	unsigned char c;
 	struct s_queue *q;
 	struct tty *t;
@@ -40,10 +48,12 @@ int tty_read(uint8_t minor, uint8_t rawflag, uint8_t flag)
 	nread = 0;
 	while (nread < udata.u_count) {
 		for (;;) {
-		        if (t->flag & TTYF_DEAD) {
-		                udata.u_error = ENXIO;
-		                return -1;
-                        }
+#ifdef CONFIG_LEVEL_2		
+                        if (jobcontrol_in(minor, t, &nread))
+				return nread;
+#endif				
+		        if ((t->flag & TTYF_DEAD) && (!q->q_count))
+				goto dead;
 			if (remq(q, &c)) {
 				if (udata.u_sysio)
 					*udata.u_base = c;
@@ -56,8 +66,8 @@ int tty_read(uint8_t minor, uint8_t rawflag, uint8_t flag)
 			        if (n)
 			                udata.u_ptab->p_timeout = n + 1;
                         }
-			if (psleep_flags(q, flag))
-			        return -1;
+			if (psleep_flags_io(q, flag, &nread))
+			        return nread;
                         /* timer expired */
                         if (udata.u_ptab->p_timeout == 1)
                                 goto out;
@@ -84,13 +94,16 @@ int tty_read(uint8_t minor, uint8_t rawflag, uint8_t flag)
 out:
 	wakeup(&q->q_count);
 	return nread;
-}
 
+dead:
+        udata.u_error = ENXIO;
+	return -1;
+}
 
 int tty_write(uint8_t minor, uint8_t rawflag, uint8_t flag)
 {
 	struct tty *t;
-	int towrite;
+	usize_t written = 0;
 	uint8_t c;
 
 	used(rawflag);
@@ -98,20 +111,21 @@ int tty_write(uint8_t minor, uint8_t rawflag, uint8_t flag)
 
 	t = &ttydata[minor];
 
-	towrite = udata.u_count;
-
 	while (udata.u_count-- != 0) {
 		for (;;) {	/* Wait on the ^S/^Q flag */
+#ifdef CONFIG_LEVEL_2		
+	                if (jobcontrol_out(minor, t, &written))
+				return written;
+#endif				
 		        if (t->flag & TTYF_DEAD) {
-		                udata.u_error = ENXIO;
-		                return -1;
-                        }
+			        udata.u_error = ENXIO;
+			        return -1;
+			}
 			if (!(t->flag & TTYF_STOP))
 				break;
-			if (psleep_flags(&t->flag, flag))
-				return -1;
+			if (psleep_flags_io(&t->flag, flag, &written))
+				return written;
 		}
-
 		if (!(t->flag & TTYF_DISCARD)) {
 			if (udata.u_sysio)
 				c = *udata.u_base;
@@ -127,9 +141,11 @@ int tty_write(uint8_t minor, uint8_t rawflag, uint8_t flag)
 			tty_putc_wait(minor, c);
 		}
 		++udata.u_base;
+		++written;
 	}
-	return towrite;
+	return written;
 }
+
 
 int tty_open(uint8_t minor, uint16_t flag)
 {
@@ -154,7 +170,7 @@ int tty_open(uint8_t minor, uint16_t flag)
         }
 	tty_setup(minor);
 	if ((t->termios.c_cflag & CLOCAL) || (flag & O_NDELAY))
-	        return 0;
+		goto out;
 
         /* FIXME: racy - need to handle IRQ driven carrier events safely */
         if (!tty_carrier(minor)) {
@@ -167,15 +183,16 @@ int tty_open(uint8_t minor, uint16_t flag)
                 t->flag &= ~TTYF_DEAD;
                 return -1;
         }
-        t->users++;
+ out:   t->users++;
         return 0;
 }
 
 /* Post processing for a successful tty open */
-void tty_post(inoptr ino, uint8_t minor, uint8_t flag)
+void tty_post(inoptr ino, uint8_t minor, uint16_t flag)
 {
         struct tty *t = &ttydata[minor];
         irqflags_t irq = di();
+
 	/* If there is no controlling tty for the process, establish it */
 	/* Disable interrupts so we don't endup setting up our control after
 	   the carrier drops and tries to undo it.. */
@@ -183,6 +200,10 @@ void tty_post(inoptr ino, uint8_t minor, uint8_t flag)
 		udata.u_ptab->p_tty = minor;
 		udata.u_ctty = ino;
 		t->pgrp = udata.u_ptab->p_pgrp;
+#ifdef DEBUG
+		kprintf("setting tty %d pgrp to %d for pid %d\n",
+		        minor, t->pgrp, udata.u_ptab->p_pid);
+#endif
 	}
 	irqrestore(irq);
 }
@@ -196,10 +217,16 @@ int tty_close(uint8_t minor)
 	if (minor == udata.u_ptab->p_tty) {
 		udata.u_ptab->p_tty = 0;
 		udata.u_ctty = NULL;
+#ifdef DEBUG
+		kprintf("pid %d loses controller\n", udata.u_ptab->p_pid);
+#endif
         }
 	t->pgrp = 0;
         /* If we were hung up then the last opener has gone away */
         t->flag &= ~TTYF_DEAD;
+#ifdef DEBUG
+        kprintf("tty %d last close\n", minor);
+#endif
 	return (0);
 }
 
@@ -215,34 +242,48 @@ void tty_exit(void)
 int tty_ioctl(uint8_t minor, uarg_t request, char *data)
 {				/* Data in User Space */
         struct tty *t;
+
 	if (minor > NUM_DEV_TTY + 1) {
 		udata.u_error = ENODEV;
 		return -1;
 	}
         t = &ttydata[minor];
+
+        /* Special case select ending after a hangup */
+#ifdef CONFIG_LEVEL_2
+	if (request == SELECT_END) {
+		tty_select--;
+		return 0;
+	}
+        if (jobcontrol_ioctl(minor, t, request))
+		return -1;
+#endif		
 	if (t->flag & TTYF_DEAD) {
 	        udata.u_error = ENXIO;
 	        return -1;
         }
+
 	switch (request) {
 	case TCGETS:
-		uput(&ttydata[minor].termios, data, sizeof(struct termios));
+		return uput(&t->termios, data, sizeof(struct termios));
 		break;
+	case TCSETSF:
+		clrq(&ttyinq[minor]);
+		/* Fall through for now */
 	case TCSETSW:
 		/* We don't have an output queue really so for now drop
 		   through */
 	case TCSETS:
-	case TCSETSF:
-		uget(data, &ttydata[minor].termios, sizeof(struct termios));
-		if (request == TCSETSF)
-			clrq(&ttyinq[minor]);
+		if (uget(data, &t->termios, sizeof(struct termios)) == -1)
+		        return -1;
                 tty_setup(minor);
+                tty_selwake(minor, SELECT_IN|SELECT_OUT);
 		break;
 	case TIOCINQ:
-		uput(&ttyinq[minor].q_count, data, 2);
-		break;
+		return uput(&ttyinq[minor].q_count, data, 2);
 	case TIOCFLUSH:
 		clrq(&ttyinq[minor]);
+                tty_selwake(minor, SELECT_OUT);
 		break;
         case TIOCHANGUP:
                 tty_hangup(minor);
@@ -252,12 +293,56 @@ int tty_ioctl(uint8_t minor, uarg_t request, char *data)
 		break;
 	case TIOCOSTART:
 		t->flag &= ~TTYF_STOP;
+                tty_selwake(minor, SELECT_OUT);
 		break;
+        case TIOCGWINSZ:
+                return uput(&t->winsize, data, sizeof(struct winsize));
+        case TIOCSWINSZ:
+                if (uget(data, &t->winsize, sizeof(struct winsize)))
+                        return -1;
+                sgrpsig(t->pgrp, SIGWINCH);
+                return 0;
+        case TIOCGPGRP:
+                return uputi(t->pgrp, data);
+#ifdef CONFIG_LEVEL_2
+        case TIOCSPGRP:
+                /* Only applicable via controlling terminal */
+                if (minor != udata.u_ptab->p_tty) {
+                        udata.u_error = ENOTTY;
+                        return -1;
+                }
+                return tcsetpgrp(t, data);
+	case SELECT_BEGIN:
+		tty_select++;
+		/* Fall through */
+	case SELECT_TEST:
+	{
+		uint8_t n = *data;
+		*data = 0;
+		if (n & SELECT_EX) {
+			if (t->flag & TTYF_DEAD) {
+				*data = SELECT_IN|SELECT_EX;
+				return 0;
+			}
+		}
+		/* FIXME: IRQ race */
+		if (n & SELECT_IN) {
+			/* TODO - this one is hard, we need to peek down the queue to see if
+			   a canonical input would succeed */
+		}
+		if (n & SELECT_OUT) {
+			if ((!(t->flag & TTYF_STOP)) &&
+				tty_writeready(minor) != TTY_READY_LATER)
+					*data |= SELECT_OUT;
+		}
+		return 0;
+	}
+#endif
 	default:
 		udata.u_error = ENOTTY;
-		return (-1);
+		return -1;
 	}
-	return (0);
+	return 0;
 }
 
 
@@ -272,12 +357,11 @@ int tty_ioctl(uint8_t minor, uarg_t request, char *data)
 int tty_inproc(uint8_t minor, unsigned char c)
 {
 	unsigned char oc;
-	struct tty *t;
-	struct s_queue *q = &ttyinq[minor];
 	int canon;
 	uint8_t wr;
+	struct tty *t = &ttydata[minor];
+	struct s_queue *q = &ttyinq[minor];
 
-	t = &ttydata[minor];
 	canon = t->termios.c_lflag & ICANON;
 
 	if (t->termios.c_iflag & ISTRIP)
@@ -294,8 +378,12 @@ int tty_inproc(uint8_t minor, unsigned char c)
 		trap_monitor();
 #endif
 
-	if (c == '\r' && (t->termios.c_iflag & ICRNL))
-		c = '\n';
+	if (c == '\r' ){
+		if(t->termios.c_iflag & IGNCR )
+			return 1;
+		if(t->termios.c_iflag & ICRNL)
+			c = '\n';
+	}
 	if (c == '\n' && (t->termios.c_iflag & INLCR))
 		c = '\r';
 
@@ -324,6 +412,7 @@ sigout:
 		if (c == t->termios.c_cc[VSTART]) {	/* ^Q */
 		        t->flag &= ~TTYF_STOP;
 			wakeup(&t->flag);
+			tty_selwake(minor, SELECT_OUT);
 			return 1;
 		}
 	}
@@ -350,8 +439,10 @@ sigout:
 		tty_putc(minor, '\007');	/* Beep if no more room */
 
 	if (!canon || c == t->termios.c_cc[VEOL] || c == '\n'
-	    || c == t->termios.c_cc[VEOF])
+	    || c == t->termios.c_cc[VEOF]) {
 		wakeup(q);
+		tty_selwake(minor, SELECT_IN);
+	}
 	return wr;
 
 eraseout:
@@ -372,6 +463,7 @@ eraseout:
 void tty_outproc(uint8_t minor)
 {
 	wakeup(&ttydata[minor]);
+	tty_selwake(minor, SELECT_OUT);
 }
 
 void tty_echo(uint8_t minor, unsigned char c)
@@ -406,7 +498,7 @@ void tty_putc_wait(uint8_t minor, unsigned char c)
            -1 (TTY_READY_LATER) -- blocked, don't spin (eg flow controlled) */
 	if (!udata.u_ininterrupt) {
 		while ((t = tty_writeready(minor)) != TTY_READY_NOW)
-			if (t != TTY_READY_SOON || need_resched()){
+			if (t != TTY_READY_SOON || need_reschedule()){
 				irqflags_t irq = di();
 				tty_sleeping(minor);
 				psleep(&ttydata[minor]);
@@ -421,6 +513,7 @@ void tty_hangup(uint8_t minor)
         struct tty *t = &ttydata[minor];
         /* Kill users */
         sgrpsig(t->pgrp, SIGHUP);
+        sgrpsig(t->pgrp, SIGCONT);
         t->pgrp = 0;
         /* Stop any new I/O with errors */
         t->flag |= TTYF_DEAD;
@@ -429,6 +522,7 @@ void tty_hangup(uint8_t minor)
         /* Wake stopped stuff */
         wakeup(&t->flag);
         /* and deadflag will clear when the last user goes away */
+	tty_selwake(minor, SELECT_IN|SELECT_OUT|SELECT_EX);
 }
 
 void tty_carrier_drop(uint8_t minor)
@@ -439,8 +533,8 @@ void tty_carrier_drop(uint8_t minor)
 
 void tty_carrier_raise(uint8_t minor)
 {
-        if (ttydata[minor].termios.c_cflag & HUPCL)
-                wakeup(&ttydata[minor].termios.c_cflag);
+	wakeup(&ttydata[minor].termios.c_cflag);
+	tty_selwake(minor, SELECT_IN|SELECT_OUT);
 }
 
 /*
@@ -448,6 +542,9 @@ void tty_carrier_raise(uint8_t minor)
  */
 
 #ifdef CONFIG_DEV_PTY
+
+static uint8_t ptyusers[PTY_PAIR];
+
 int ptty_open(uint8_t minor, uint16_t flag)
 {
 	return tty_open(minor + PTY_OFFSET, flag);
@@ -475,11 +572,20 @@ int ptty_ioctl(uint8_t minor, uint16_t request, char *data)
 
 int pty_open(uint8_t minor, uint16_t flag)
 {
-	return tty_open(minor + PTY_OFFSET, flag);
+	int r = tty_open(minor + PTY_OFFSET, flag | O_NOCTTY | O_NDELAY);
+	if (r == 0) {
+		if (!ptyusers[minor])
+			tty_carrier_raise(minor + PTY_OFFSET);
+		ptyusers[minor]++;
+	}
+	return r;
 }
 
 int pty_close(uint8_t minor)
 {
+	ptyusers[minor]--;
+	if (ptyusers[minor] == 0)
+		tty_carrider_drop(minor + PTY_OFFSET);
 	return tty_close(minor + PTY_OFFSET);
 }
 
@@ -537,6 +643,7 @@ void pty_putc_wait(uint8_t minor, char c)
 	struct s_queue q = &ptyq[minor + PTY_OFFSET + PTY_PAIR];
 	/* tty output queue to pty */
 	insq(q, c);
+	/* FIXME: select */
 	wakeup(q);
 }
 #endif

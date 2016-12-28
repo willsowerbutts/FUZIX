@@ -46,12 +46,13 @@
    "dw_transaction" routine/function:
 
    int16_t dw_transaction( char *send, uint16_t scnt,
-                            char *recv, uint16_t rcnt )
+                            char *recv, uint16_t rcnt, uint8_t rawf )
 
    where "send" is a data buffer to send
          "scnt" is the size of the send buffer
          "recv" is a data buffer for the received reply
 	 "rcnt" is the size of the recv buffer
+	 "rawf" rd/wr drirectly to userspace
    returns:  0 on no error
             -1 on DW reception framing error (too slow!!)
             -2 on not all bytes received
@@ -79,16 +80,23 @@
 #include <printf.h>
 #include <tty.h>
 #include <devdw.h>
+#include <ttydw.h>
 
 #define DW_FASTWRITE 0x80
 #define DW_SETSTAT   0xC4
 #define DW_SERREAD   0x43
 #define DW_SERREADM  0x63
 #define DW_INIT      0x5a
+#define DW_TIME      0x23
 
 #define DW_VOPEN     0x29
 #define DW_VCLOSE    0x2A
 
+#define DW_NS_OFF    ( DW_MIN_OFF + DW_VSER_NUM )
+
+
+/* type of connected drivewire server */
+uint8_t dwtype = 0;
 
 /* Internal Structure to represent state of DW ports */
 struct dw_in{
@@ -115,7 +123,7 @@ int open_ports=0;
 
 
 /* buffer for receiving multiple bytes from vport channels */
-char tbuf[256];
+unsigned char tbuf[256];
 
 
 int mini( int a, int b ){
@@ -124,36 +132,26 @@ int mini( int a, int b ){
 }
 
 
-/* Test a passed minor for validity and/or get index
-   returns: -1 on invalid, else ok. */
-int dw_val( uint8_t minor ){
-	minor-=DW_MIN_OFF;
-	if( minor < 0 ) return -1;
-	if( minor > (DW_VSER_NUM + DW_VWIN_NUM) ) return -1;
-	return minor;
-}
-
-
 /* Gets dw_tab entry for given minor */
 struct dw_in *dw_gettab( uint8_t minor ){
-	return &dwtab[ dw_val( minor ) ] ;
+	return &dwtab[ minor - DW_MIN_OFF ] ;
 }
 
 /* Translates a DW port no. to a proper minor no */
 int dw_minor( uint8_t port ){
-	if( port < 16 ) port -= 1 ;
-	else port = port - 64 + DW_VSER_NUM ;
-	return( port + DW_MIN_OFF );
+	if( port >= 16 ) return port - 16 + DW_NS_OFF  ;
+	int ret = port + DW_MIN_OFF - 1 ;
+	return ret;
+					
 }
 
 
 /* Translates a Minor to a port no */
 int dw_port( uint8_t minor ){
-	minor -= DW_MIN_OFF;
-	/* fix next line? */
-	if( minor >= DW_VSER_NUM ) minor += 16 - DW_VSER_NUM ;
-	else minor++;
-	return minor;
+	int ret = minor - DW_MIN_OFF + 1;
+	if( minor >= DW_NS_OFF ) 
+		return 	minor + 16 - DW_NS_OFF ;
+	return ret;
 }
 
 
@@ -163,11 +161,7 @@ void dw_putc( uint8_t minor, unsigned char c ){
 	unsigned char buf[2];
 	buf[0]=DW_FASTWRITE | dw_port( minor ) ;
 	buf[1]=c;
-	dw_transaction( buf, 2, NULL, 0 );
-	if( c == '\n' ){
-		c='\r';
-		dw_transaction( buf,2, NULL, 0 );
-	}
+	dw_transaction( buf, 2, NULL, 0, 0 );
 }
 
 
@@ -180,7 +174,7 @@ void dw_vopen( uint8_t minor ){
 	buf[1]=dw_port( minor );
 	buf[2]=DW_VOPEN;
 	if( ! ( p->flags & DW_FLG_OPEN ) ){
-		dw_transaction( buf, 3, NULL, 0 );
+		dw_transaction( buf, 3, NULL, 0, 0 );
 		open_ports++;
 	}
 	p->flags |= DW_FLG_OPEN;
@@ -193,9 +187,9 @@ void dw_vclose( uint8_t minor){
 	buf[0]=DW_SETSTAT;
 	buf[1]=dw_port( minor );
 	buf[2]=DW_VCLOSE;
-	dw_transaction( buf, 3, NULL, 0 );
-	open_ports--;
-	p->flags &= ~DW_FLG_OPEN ;
+	if( p->flags & DW_FLG_OPEN ){
+		dw_transaction( buf, 3, NULL, 0, 0 );
+	}
 }
 
 
@@ -220,7 +214,7 @@ void dw_vpoll( ){
 	/* up to four transactions at a poll */
 	for( i=0; i<4; i++){
 		buf[0]=DW_SERREAD;
-		dw_transaction( buf, 1, buf, 2 );
+		dw_transaction( buf, 1, buf, 2, 0 );
 		/* nothing waiting ? */
 		if( ! (buf[0] & 0x7f) ) {
 			wait=MAX_WAIT;
@@ -228,42 +222,48 @@ void dw_vpoll( ){
 		}
 		/* VSER Channel single datum */
 		if( buf[0]<16 ){
-			int minor=dw_minor( buf[0] );
-			if( buf[1]!= '\r' ) 
-				tty_inproc( minor, buf[1] );
+			int minor=dw_minor( buf[0] - 1 );
+			tty_inproc( minor, buf[1] );
 			continue;
 		}
 		/* VSER Channel closed? */
 		if( buf[0] == 16 ){
 			int minor=dw_minor( buf[1] );
-			struct dw_in *p=dw_gettab( buf[1]-1 );
-			p->flags &= ~DW_FLG_OPEN ;
-			dw_vclose( minor );
-			tty_carrier_drop( minor );
+			struct dw_in *p=dw_gettab( minor );
+		       	if( p->flags & DW_FLG_OPEN ){
+				p->flags &= ~DW_FLG_OPEN;
+				open_ports--;
+				if( ttydata[minor].users )
+					tty_carrier_drop( minor);
+			}
 			continue;
 		}
 		/* VSER channel multiple data */
 		if( buf[0] < 32 ){
 			int i;
-			char b[3];
-			char c;
+			unsigned char b[3];
+			int min;
 			int minor=dw_minor( buf[0]-17 );
 			b[0]=DW_SERREADM;
 			b[1]=buf[0]-17;
-			b[2]=mini( buf[1], qfree( minor )-1 );
-			dw_transaction( b,3,tbuf, b[2] );
-			for( i=0; i<b[2]; i++){
-				if( tbuf[i]!='\r') 
-					tty_inproc( minor, tbuf[i] );
+			min=mini( buf[1], qfree( minor ) );
+			b[2]=min;
+			if( !min ){
+				wait = MAX_WAIT;
+				break;
 			}
-			wait=1;
+			dw_transaction( b,3,tbuf, min, 0 );
+			for( i=0; i<min; i++){
+				tty_inproc( minor, tbuf[i] );
+			}
+			wait = 16 - (min >> 4);
 			break;
 		}
 		/* VWIN channel single datum */
 		if( buf[0] < 144 ){
-			int minor=dw_minor( buf[0] );
+			int minor=dw_minor( buf[0]-48 );
 			tty_inproc( minor, buf[1] );
-			continue;	
+			continue;
 		}
 		/* something we don't handle? */
 		kprintf("out of band data\n");
@@ -281,9 +281,49 @@ int dw_carrier( uint8_t minor ){
 
 
 /* (re) Initializes DW */
-void dw_init( ){
-	char buf[2];
+__attribute__((section(".discard")))
+int dw_init( ){
+	unsigned char buf[6];
+	char *s;
 	buf[0]=DW_INIT;
 	buf[1]=0x42;
-	dw_transaction( buf,2,buf,1 );
+	kprintf("DW: ");
+	if ( dwtype == DWTYPE_NOTFOUND ){
+		kprintf("disabled\n");
+		return -1;
+	}
+	if ( dw_transaction( buf,2,buf,1,0 ) ){
+		buf[0] = DW_TIME;
+		if (dw_transaction( buf,1,buf,6,0 ) ){
+			dwtype = DWTYPE_NOTFOUND;
+			kprintf("not found\n");
+			return -1;
+		}
+		else {
+			s = "dw3";
+			dwtype = DWTYPE_DW3;
+		}
+	}
+	else {
+		kprintf(" 0x%x: ", buf[0] );
+		switch ( buf[0] ){
+		case DWTYPE_DW4:
+			s = "dw4";
+			break;
+		case DWTYPE_LWWIRE:
+			s = "lwwire";
+			break;
+		case DWTYPE_PYDRIVEWIRE:
+			s = "n6il";
+			break;
+		default:
+			s = "unknown";
+			buf[0] = DWTYPE_UNKNOWN;
+			break;
+		}
+		dwtype = buf[0];
+	}
+	kprintf("%s\n", s);
+	return 0;
 }
+

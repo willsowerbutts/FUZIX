@@ -23,8 +23,10 @@ static int bload(inoptr i, uint16_t bl, uint16_t base, uint16_t len)
 			bufdiscard((bufptr)buf);
 			brelse((bufptr)buf);
 #else
-			/* Might be worth spotting sequential blocks and
-			   merging ? */
+			/* FIXME: allow for async queued I/O here. We want
+			   an API something like breadasync() that either
+			   does the cdread() or queues for a smart platform
+			   or box with floppy tape devices */
 			udata.u_offset = (off_t)blk << 9;
 			udata.u_count = 512;
 			udata.u_base = (uint8_t *)base;
@@ -84,6 +86,8 @@ static int header_ok(uint8_t *pp)
 	return 1;
 }
 
+static uint8_t in_execve;
+
 arg_t _execve(void)
 {
 	staticfast inoptr ino;
@@ -108,6 +112,15 @@ arg_t _execve(void)
 		udata.u_error = EACCES;
 		goto nogood;
 	}
+
+	/* Core dump and ptrace permission logic */
+#ifdef CONFIG_LEVEL_2
+	if ((!(getperm(ino) & OTH_RD)) ||
+		(ino->c_node.i_mode & (SET_UID | SET_GID)))
+		udata.u_flags |= U_FLAG_NOCORE;
+	else
+		udata.u_flags &= ~U_FLAG_NOCORE;
+#endif
 
 	setftime(ino, A_TIME);
 
@@ -138,6 +151,13 @@ arg_t _execve(void)
 		udata.u_error = ENOMEM;
 		goto nogood2;
 	}
+
+	/* We can't allow multiple execs to occur beyond this point at once
+	   otherwise we may deadlock out of buffers. As we already assume
+	   synchronous block I/O on 8bit boxes this isn't really a hit at all */
+	while(in_execve)
+		psleep(&in_execve);
+	in_execve = 1;
 
 	/* Gather the arguments, and put them in temporary buffers. */
 	abuf = (struct s_argblk *) tmpbuf();
@@ -173,7 +193,7 @@ arg_t _execve(void)
 	brelse(buf);
 
 	/* At this point, we are committed to reading in and
-	 * executing the program. */
+	 * executing the program. This call can block. */
 
 	close_on_exec();
 
@@ -198,7 +218,8 @@ arg_t _execve(void)
 	   that on 8bit boxes, but defer it to brk/sbrk() */
 	uzero((uint8_t *)progptr, bss);
 
-	udata.u_break = (int) progptr + bss;	//  Set initial break for program
+	/* Set initial break for program */
+	udata.u_break = (int)ALIGNUP(progptr + bss);
 
 	/* Turn off caught signals */
 	memset(udata.u_sigvec, 0, sizeof(udata.u_sigvec));
@@ -230,12 +251,16 @@ arg_t _execve(void)
 	udata.u_isp = nenvp - 2;
 
 	// Start execution (never returns)
+	in_execve = 0;
+	wakeup(&in_execve);
 	doexec(PROGLOAD);
 
 	// tidy up in various failure modes:
 nogood3:
 	brelse(abuf);
 	brelse(ebuf);
+	in_execve = 0;
+	wakeup(&in_execve);
       nogood2:
 	brelse(buf);
       nogood:
@@ -254,13 +279,15 @@ nogood3:
 bool rargs(char **userspace_argv, struct s_argblk * argbuf)
 {
 	char *ptr;		/* Address of base of arg strings in user space */
+	char *up = (char *)userspace_argv;
 	uint8_t c;
 	uint8_t *bufp;
 
 	argbuf->a_argc = 0;	/* Store argc in argbuf */
 	bufp = argbuf->a_buf;
 
-	while ((ptr = (char *) ugetw(userspace_argv++)) != NULL) {
+	while ((ptr = (char *) ugetp(up)) != NULL) {
+		up += sizeof(uptr_t);
 		++(argbuf->a_argc);	/* Store argc in argbuf. */
 		do {
 			*bufp++ = c = ugetc(ptr++);
@@ -278,15 +305,15 @@ bool rargs(char **userspace_argv, struct s_argblk * argbuf)
 
 char **wargs(char *ptr, struct s_argblk *argbuf, int *cnt)	// ptr is in userspace
 {
-	char **argv;		/* Address of users argv[], just below ptr */
+	char *argv;		/* Address of users argv[], just below ptr */
 	int argc, arglen;
-	char **argbase;
+	char *argbase;
 	uint8_t *sptr;
 
 	sptr = argbuf->a_buf;
 
 	/* Move them into the users address space, at the very top */
-	ptr -= (arglen = argbuf->a_arglen);
+	ptr -= (arglen = (int)ALIGNUP(argbuf->a_arglen));
 
 	if (arglen) {
 		uput(sptr, ptr, arglen);
@@ -294,7 +321,7 @@ char **wargs(char *ptr, struct s_argblk *argbuf, int *cnt)	// ptr is in userspac
 
 	/* Set argv to point below the argument strings */
 	argc = argbuf->a_argc;
-	argbase = argv = (char **) ptr - (argc + 1);
+	argbase = argv = ptr - sizeof(uptr_t) * (argc + 1);
 
 	if (cnt) {
 		*cnt = argc;
@@ -302,15 +329,16 @@ char **wargs(char *ptr, struct s_argblk *argbuf, int *cnt)	// ptr is in userspac
 
 	/* Set each element of argv[] to point to its argument string */
 	while (argc--) {
-		uputw((uint16_t) ptr, argv++);
+		uputp((uptr_t) ptr, argv);
+		argv += sizeof(uptr_t);
 		if (argc) {
 			do
 				++ptr;
 			while (*sptr++);
 		}
 	}
-	uputw(0, argv);		/*;;26Feb- Add Null Pointer to end of array */
-	return ((char **) argbase);
+	uputp(0, argv);		/*;;26Feb- Add Null Pointer to end of array */
+	return (char **)argbase;
 }
 
 /*
@@ -328,3 +356,60 @@ arg_t _memfree(void)
 	udata.u_error = ENOMEM;
 	return -1;
 }
+
+#ifdef CONFIG_LEVEL_2
+
+/*
+ *	Core dump
+ */
+
+static struct coredump corehdr = {
+	0xDEAD,
+	0xC0DE,
+	16,
+};
+
+uint8_t write_core_image(void)
+{
+	inoptr parent = NULLINODE;
+	inoptr ino;
+
+	udata.u_error = 0;
+
+	ino = kn_open("core", &parent);
+	if (ino) {
+		i_deref(parent);
+		return 0;
+	}
+	if (parent && (ino = newfile(parent, "core"))) {
+		ino->c_node.i_mode = F_REG | 0400;
+		setftime(ino, A_TIME | M_TIME | C_TIME);
+		wr_inode(ino);
+		f_trunc(ino);
+
+		/* FIXME: need to add some arch specific header bits, and
+		   also pull stuff like the true sp and registers out of
+		   the return stack properly */
+
+		corehdr.ch_base = MAPBASE;
+		corehdr.ch_break = udata.u_break;
+		corehdr.ch_sp = udata.u_syscall_sp;
+		corehdr.ch_top = PROGTOP;
+		udata.u_offset = 0;
+		udata.u_base = (uint8_t *)&corehdr;
+		udata.u_sysio = true;
+		udata.u_count = sizeof(corehdr);
+		writei(ino, 0);
+		udata.u_sysio = false;
+		udata.u_base = MAPBASE;
+		udata.u_count = udata.u_break - MAPBASE;
+		writei(ino, 0);
+		udata.u_base = udata.u_sp;
+		udata.u_count = PROGTOP - (uint16_t)udata.u_sp;
+		writei(ino, 0);
+		i_deref(ino);
+		return W_COREDUMP;
+	}
+	return 0;
+}
+#endif

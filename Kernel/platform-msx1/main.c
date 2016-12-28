@@ -15,6 +15,12 @@ void platform_idle(void)
     __endasm;
 }
 
+uint8_t platform_param(unsigned char *p)
+{
+    used(p);
+    return 0;
+}
+
 void do_beep(void)
 {
 }

@@ -24,13 +24,13 @@ int time_zone = 0;
 
 int main(int argc, char *argv[])
 {
-    char *s, *pbuf, *tmp_fname, *pwf = "/etc/passwd";
+    char *s, *pbuf, *tmp_fname;
+    const char *pwf = "/etc/passwd";
     char salt[3];
     int  n, failure_cnt, uid, gid;
     struct passwd *pwd;
     FILE * passwd_fp;
     time_t now;
-    long   lnow;
 
     umask(022);
 
@@ -137,4 +137,5 @@ int main(int argc, char *argv[])
 	}
 	fprintf(stderr, "They don't match; try again.\n");
     }
+    return 0;
 }

@@ -5,6 +5,9 @@ typedef signed short int16_t;
 typedef unsigned char uint8_t;
 typedef signed char int8_t;
 
+typedef uint16_t size_t;
+typedef int16_t ssize_t;
+
 typedef int16_t  arg_t;			/* Holds arguments */
 typedef uint16_t uarg_t;		/* Holds arguments */
 typedef uint16_t usize_t;		/* Largest value passed by userspace */
@@ -14,13 +17,11 @@ typedef uint16_t uptr_t;		/* Userspace pointer equivalent */
 
 #define uputp  uputw			/* Copy user pointer type */
 #define ugetp  ugetw			/* between user and kernel */
-
-#define ei()   do {__asm ei __endasm; } while(0);
+#define uputi  uputw			/* Copy user int type */
+#define ugeti  ugetw			/* between user and kernel */
 
 typedef uint16_t irqflags_t;
 
-extern irqflags_t di(void);
-extern void irqrestore(irqflags_t f);
 extern void out(uint8_t addr, uint8_t val);
 extern uint8_t in(uint8_t addr);
 
@@ -79,3 +80,5 @@ typedef union {            /* this structure is endian dependent */
 #define COMMON_MEMORY   static void COMMONSEG(void)  __naked { __asm .area _COMMONMEM __endasm; }
 
 #define ntohs(x)	((((x) & 0xFF) << 8) | (((x) & 0xFF00) >> 8))
+#define ntohl(x)	((((x) & 0xFF) << 24) | (((x) & 0xFF00) << 8) | \
+                         (((x) & 0xFF0000) >> 8) | (((x >> 24) & 0xFF)))

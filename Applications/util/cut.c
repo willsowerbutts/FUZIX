@@ -24,6 +24,7 @@
 #include <ctype.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <stdio.h>
 
 #define MAX_FIELD	80	/* Pointers to the beginning of each field
@@ -73,7 +74,7 @@ int  exit_status;
 
 void warn(int warn_number, char *option)
 {
-    static char *warn_msg[] =
+    static const char *warn_msg[] =
     {
 	"%s: Option -d allowed only with -f\n",
 	"%s: -%s overrides earlier option\n",
@@ -88,7 +89,7 @@ void warn(int warn_number, char *option)
 
 void cuterror(int err)
 {
-    static char *err_mes[] =
+    static const char *err_mes[] =
     {
 	"%s: syntax error\n",
 	"%s: position must be >0\n",
@@ -159,7 +160,7 @@ void cut(void)
 
 	switch (mode) {
 	case DUMP_STDIN:
-	    printf("%s", line);
+	    fputs(line, stdout);
 	    break;
 
 	case OPTIONF:
@@ -180,7 +181,7 @@ void cut(void)
 	    }
 	    if (maxcol == 1) {
 		if (flag_s != SET)
-		    printf("%s", line);
+		    fputs(line, stdout);
 	    } else {
 		for (i = 0; i < num_args; i++) {
 		    for (j = args[i * 2]; j <= args[i * 2 + 1]; j++)

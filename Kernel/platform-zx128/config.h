@@ -1,16 +1,5 @@
-/* Simple IDE interface */
 #define CONFIG_IDE
-#define IDE_REG_DATA		0xA3
-#define IDE_REG_ERROR		0xA7
-#define IDE_REG_FEATURES	0xA7
-#define IDE_REG_SEC_COUNT	0xAB
-#define IDE_REG_LBA_0		0xAF
-#define IDE_REG_LBA_1		0xB3
-#define IDE_REG_LBA_2		0xB7
-#define IDE_REG_LBA_3		0xBB
-#define IDE_REG_DEVHEAD		0xBB
-#define IDE_REG_STATUS		0xBF
-#define IDE_REG_COMMAND		0xBF
+//#define CONFIG_BETADISK
 
 /* Enable to make ^Z dump the inode table for debug */
 #undef CONFIG_IDUMP
@@ -64,7 +53,7 @@
 #define NUM_DEV_TTY 1
 
 #define TTYDEV   BOOT_TTY /* Device used by kernel for messages, panics */
-#define SWAPDEV  2051	/* Microdrive 3 : FIXME - configure and probe */
+/* #define SWAPDEV  2051 */ /* Microdrive 3 : FIXME - configure and probe */
 #define NBUFS    9       /* Number of block buffers */
 #define NMOUNTS	 4	  /* Number of mounts at a time */
 #define MAX_BLKDEV 2	    /* 2 IDE drives, 1 SD drive */
@@ -76,3 +65,10 @@
 
 /* All our pages get mapped into the top 16K bank for swapping use */
 #define swap_map(x)		((uint8_t *)(x|0xC000))
+
+#define platform_discard()
+
+/* Betadisk functions do not work with modern procedures */
+#ifdef CONFIG_BETADISK
+#define CONFIG_LEGACY_EXEC
+#endif

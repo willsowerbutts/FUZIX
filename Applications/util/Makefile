@@ -2,17 +2,12 @@ CC = sdcc
 ASM = sdasz80
 AR = sdar
 LINKER = sdcc
-FCC = ../../Library/tools/fcc -O2
+FCC = ../../Library/tools/fcc
+FCCOPTS = -O2
 PLATFORM =
 #PLATFORM = -tzx128
 
 PROGLOAD=`(cat ../../Kernel/platform/config.h; echo PROGLOAD) | cpp -E | tail -n1`
-
-# Used for programs that make sdcc go boom or take hours
-CC_CRAP = -mz80 --std-c99 -c --opt-code-size --max-allocs-per-node 1000 -I../../Library/include
-ASM_OPT = -l -o -s
-LINKER_OPT = -mz80 --nostdlib --no-std-crt0 --code-loc $(PROGLOAD) --data-loc  0
-BINMAN = ../../Library/tools/binman
 
 .SUFFIXES: .c .rel
 
@@ -27,6 +22,7 @@ SRCSNS = \
 	date.c \
 	dirname.c \
 	false.c \
+	groups.c \
 	head.c \
 	init.c \
 	kill.c \
@@ -50,7 +46,6 @@ SRCSNS = \
 	touch.c \
 	tr.c \
 	true.c \
-	uname.c \
 	while1.c \
 	whoami.c \
 	yes.c
@@ -74,15 +69,18 @@ SRCS  = banner.c \
 	fsck.c \
 	grep.c \
 	id.c \
+	kbdrate.c \
 	ll.c \
 	ls.c \
 	man.c \
+	manscan.c \
+	marksman.c \
 	mkfs.c \
+	mode.c \
 	more.c \
 	mount.c \
 	od.c \
 	passwd.c \
-	patchcpm.c \
 	ps.c \
 	sleep.c \
 	ssh.c \
@@ -90,18 +88,20 @@ SRCS  = banner.c \
 	stty.c \
 	su.c \
 	tail.c \
+	tchelp.c \
 	umount.c \
+	uname.c \
 	uniq.c \
+	uptime.c \
 	uud.c \
 	uue.c \
-	uptime.c \
 	wc.c \
 	which.c \
 	who.c \
 	write.c \
 	xargs.c
 
-SRCSBAD = sed.c
+SRCSBAD = sed.c socktest.c seltest.c
 
 OBJS = $(SRCS:.c=.rel)
 OBJSNS = $(SRCSNS:.c=.rel)
@@ -115,8 +115,6 @@ APPS = $(OBJS:.rel=) $(OBJSBAD:.rel=) $(OBJSNS:.rel=)
 
 all: $(APPS) sizes
 
-$(OBJSBAD): $(SRCSBAD)
-	$(CC) $(CC_CRAP) $(@:.rel=.c)
 
 $(APPSNS): OPTS = --nostdio
 
@@ -125,9 +123,13 @@ $(OBJS): %.rel: %.c
 $(OBJSNS): %.rel: %.c
 
 $(OBJSBAD): %.rel: %.c
+	$(FCC) $(PLATFORM) -c $<
 
 .c.rel:
-	$(FCC) $(PLATFORM) -c $<
+	$(FCC) $(PLATFORM) $(FCCOPTS) -c $<
+
+tchelp: tchelp.rel
+	$(FCC)	$(PLATFORM) $(OPTS) $< -o $@ -ltermcap
 
 %: %.rel
 	$(FCC) $(PLATFORM) $(OPTS) $< -o $@

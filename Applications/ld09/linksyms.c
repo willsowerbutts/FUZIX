@@ -10,30 +10,18 @@
 #undef EXTERN
 #include "globvar.h"
 
-FORWARD void linkrefs P((struct modstruct *modptr));
-PUBLIC bool_t reloc_output = 0;
+static void linkrefs(struct modstruct *modptr);
+bool_t reloc_output = 0;
 
 /* link all symbols connected to entry symbols */
 
-PUBLIC void linksyms(argreloc_output)
-bool_pt argreloc_output;
+void linksyms(bool_pt argreloc_output)
 {
     char needlink;
     struct entrylist *elptr;
     struct modstruct *modptr;
     struct symstruct *symptr;
 
-#ifdef REL_OUTPUT
-    reloc_output = argreloc_output;
-    if (argreloc_output)
-    {
-	if (modfirst->modnext != NUL_PTR)
-	    fatalerror("relocatable output only works for one input file");
-	for (modptr = modfirst; modptr != NUL_PTR; modptr = modptr->modnext)
-	    modptr->loadflag = TRUE;
-	return;
-    }
-#endif
     if ((symptr = findsym("_start")) != NUL_PTR ||
         (symptr = findsym("_main")) != NUL_PTR)
 	entrysym(symptr);
@@ -70,8 +58,7 @@ bool_pt argreloc_output;
     while (needlink);
 }
 
-PRIVATE void linkrefs(modptr)
-struct modstruct *modptr;
+static void linkrefs(struct modstruct *modptr)
 {
     register struct symstruct **symparray;
     register struct symstruct *symptr;
@@ -82,4 +69,3 @@ struct modstruct *modptr;
 	if (symptr->modptr->loadflag == FALSE)
 	    linkrefs(symptr->modptr);
 }
-

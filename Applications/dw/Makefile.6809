@@ -1,37 +1,34 @@
 PLATFORM = 6809
 CC = m6809-unknown-gcc
-# These are wrappers for lwasm and lwar
 ASM = m6809-unknown-as
 AR = m6809-unknown-ar
-LINKER = lwlink
-CFLAGS = -I../../Library/include -I../../Library/include/6502
-LINKER_OPT = --format=raw -L../../Library/libs -lc6809
+LINKER = m6809-unknown-ld
+CFLAGS = -I../../Library/include -I../../Library/include/6809
+LINKER_OPT = --oformat=raw -L../../Library/libs -lc6809
 LIBGCCDIR = $(dir $(shell $(CC) -print-libgcc-file-name))
 LINKER_OPT += -L$(LIBGCCDIR) -lgcc
-LINKER_OPT += --script=$(TARGET).link
+LINKER_OPT += --script=../util/$(TARGET).link
 ASM_OPT = -o
 CRT0 = ../../Library/libs/crt0_6809.o
 
 .SUFFIXES: .c .o
 
 
-SRCS  = dw.c
+SRCS  = dw.c dwgetty.c dwterm.c dwdate.c
 
 OBJS = $(SRCS:.c=.o)
 
 APPS = $(OBJS:.o=)
 
-all: $(APPS) sizes
-
-$(OBJS): $(SRCS)
+all: $(APPS) size.report
 
 $(APPS): $(CRT0)
 
-%: %.o
-	$(LINKER) -o $@ $(LINKER_OPT) $(CRT0) $<
+$(APPS): %: %.o
+	$(LINKER) -o $@ $(LINKER_OPT) $^
 
-sizes: $(APPS)
-	ls -l $(APPS) > size.report
+size.report: $(APPS)
+	ls -l $^ > $@
 
 clean:
 	rm -f $(OBJS) $(APPS) $(SRCS:.c=) core *~ *.asm *.lst *.sym *.map *.noi *.lk *.ihx *.tmp *.bin size.report

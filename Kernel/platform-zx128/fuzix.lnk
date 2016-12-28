@@ -6,6 +6,7 @@
 -b _CODE2=0xC000
 -b _CODE3=0xDB00
 -b _DISCARD=0x8000
+-l z80
 platform-zx128/crt0.rel
 platform-zx128/commonmem.rel
 platform-zx128/zx128.rel
@@ -24,6 +25,8 @@ platform-zx128/devmdv.rel
 platform-zx128/microdrive.rel
 platform-zx128/devfd.rel
 platform-zx128/disciple.rel
+platform-zx128/betadisk.rel
+platform-zx128/betadisk_internal.rel
 devio.rel
 filesys.rel
 process.rel
@@ -31,6 +34,7 @@ inode.rel
 syscall_exec16.rel
 syscall_fs.rel
 syscall_fs2.rel
+syscall_fs3.rel
 syscall_proc.rel
 syscall_other.rel
 tty.rel

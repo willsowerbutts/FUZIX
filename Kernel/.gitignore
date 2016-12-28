@@ -1,0 +1,22 @@
+*.asm
+common.bin
+common.ihx
+fuzix.bin
+fuzix.cdb
+fuzix.ihx
+fuzix.tmp
+hogs.txt
+platform
+relocs.dat
+version.c
+
+# binmunge output
+bank[0-9].bin
+bank[0-9].ihx
+
+# target system images
+*.sna
+*.z80
+
+# automatically generated includes
+include/sysinfoblk.h

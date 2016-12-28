@@ -12,9 +12,6 @@
 #ifdef SWAPDEV
 
 
-uint8_t *swapbase;
-unsigned int swapcnt;
-blkno_t swapblk;
 uint16_t swappage;			/* Target page */
 
 /* Table of available maps */
@@ -24,7 +21,7 @@ static uint8_t swapptr = 0;
 void swapmap_add(uint8_t swap)
 {
 	if (swapptr == MAX_SWAPS)
-		panic("maxswap");
+		panic(PANIC_MAXSWAP);
 	swapmap[swapptr++] = swap;
 }
 
@@ -36,26 +33,32 @@ int swapmap_alloc(void)
                 return 0;
 }
 
-/* FIXME: clean this up by having a common i/o structure to avoid
-   all the mode 1 and mode 2 confusion and conversions */
+/* We can re-use udata.u_block and friends as we can never be swapped while
+   we are in the middle of an I/O (at least for now). If we rework the kernel
+   for sleepable I/O this will change */
 
-int swapread(uint16_t dev, blkno_t blkno, unsigned int nbytes,
-                    uint16_t buf, uint16_t page)
+int swapread(uint16_t dev, blkno_t blkno, usize_t nbytes,
+                    uaddr_t buf, uint16_t page)
 {
-	swapbase = swap_map(buf);
-	swapcnt = nbytes;
-	swapblk = blkno;
+	udata.u_dptr = swap_map(buf);
+	udata.u_block = blkno;
+	if (nbytes & BLKMASK)
+		panic("swprd");
+	udata.u_nblock = nbytes >> BLKSHIFT;
 	swappage = page;
 	return ((*dev_tab[major(dev)].dev_read) (minor(dev), 2, 0));
 }
 
 
-int swapwrite(uint16_t dev, blkno_t blkno, unsigned int nbytes,
-		     uint16_t buf, uint16_t page)
+int swapwrite(uint16_t dev, blkno_t blkno, usize_t nbytes,
+		     uaddr_t buf, uint16_t page)
 {
-	swapbase = swap_map(buf);
-	swapcnt = nbytes;
-	swapblk = blkno;
+	/* FIXME: duplication here */
+	udata.u_dptr = swap_map(buf);
+	udata.u_block = blkno;
+	if (nbytes & BLKMASK)
+		panic("swpwr");
+	udata.u_nblock = nbytes >> BLKSHIFT;
 	swappage = page;
 	return ((*dev_tab[major(dev)].dev_write) (minor(dev), 2, 0));
 }
@@ -116,7 +119,7 @@ static ptptr swapvictim(ptptr p, int notself)
 #else
 	used(p);
 	if (notself)
-		panic("bad notself\n");
+		panic(PANIC_NOTSELF);
 	return udata.u_ptab;
 #endif
 }
@@ -141,13 +144,13 @@ void swapper(ptptr p)
 	pagemap_alloc(p);	/* May cause a swapout. May also destroy
                                    the old value of p->page2 */
 #ifdef DEBUG
-	kprintf("Swapping in %x (page %d), utab.ptab %x\n", p, p->p_page,
+	kprintf("Swapping in %p (page %d), utab.ptab %p\n", p, p->p_page,
 		udata.u_ptab);
 #endif
 	swapin(p, map);
 	swapmap_add(map);
 #ifdef DEBUG
-	kprintf("Swapped in %x (page %d), udata.ptab %x\n",
+	kprintf("Swapped in %p (page %d), udata.ptab %p\n",
 		p, p->p_page, udata.u_ptab);
 #endif
 }

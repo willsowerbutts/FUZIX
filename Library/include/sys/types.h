@@ -28,12 +28,12 @@ typedef unsigned char uchar;
 typedef unsigned int uint;
 #endif
 
-#ifndef __SIZE_T_DEFINED
+#if !defined(__SIZE_T_DEFINED) && !defined(_SIZE_T_DEFINED)
 #define __SIZE_T_DEFINED
 typedef uint16_t size_t;
 #endif
 
-#ifndef __SSIZE_T_DEFINED
+#if !defined(__SSIZE_T_DEFINED) && !defined(_SSIZE_T_DEFINED)
 #define __SSIZE_T_DEFINED
 typedef int16_t ssize_t;
 #endif
@@ -76,4 +76,10 @@ typedef struct {
 } __ktime_t;
 #endif
 typedef int32_t clock_t;
+typedef uint32_t useconds_t;
+
+#define makedev(a,b)	(((a) << 8) | (b))
+#define major(x)	((x) >> 8)
+#define minor(x)	((x) & 0xFF)
+
 #endif

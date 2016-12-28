@@ -139,21 +139,43 @@ struct termios {
 #define TIOCOSTOP	8
 #define TIOCOSTART	9
 
+#define TIOCGWINSZ	10
+#define TIOCSWINSZ	11
+
+#define TIOCGPGRP	12
+#define TIOCSPGRP	13
+
 #define KBMAPSIZE	0x20
 #define KBMAPGET	0x21
 #define VTSIZE		0x22
-#define KBSETTRANS	0x23
+#define KBSETTRANS	(0x23|IOCTL_SUPER)
 #define VTATTRS		0x24
+#define KBRATE		0x25
+
+/* Fuzix systems to level 2 have 256 byte tty buffers as per standards, level 1
+   boxes may not */
+#if defined(CONFIG_LEVEL_2)
+#define TTYSIZ 256
+#endif
 
 /* Character Input Queue size */
+#if !defined TTYSIZ
 #define TTYSIZ 132
+#endif
+
+struct winsize {		/* Keep me 8bytes on small boxes */
+    unsigned short ws_row;
+    unsigned short ws_col;
+    unsigned short ws_xpixel;
+    unsigned short ws_ypixel;
+};
 
 /* Group the tty into a single object. That lets 8bit processors keep all
    the data indexed off a single register */
 struct tty {
     /* Put flag first: makes it cheaper when short of registers */
     uint8_t flag;		/* make the whole struct
-                                   24 byte - a nice number for CPUs with no 
+                                   32 byte - a nice number for CPUs with no 
                                    multiplier */
     uint8_t users;
 #define TTYF_STOP	1
@@ -161,6 +183,7 @@ struct tty {
 #define TTYF_DEAD	4
     uint16_t pgrp;
     struct termios termios;
+    struct winsize winsize;	/* 8 byte so takes us up to 32 */
 };
 
 #define CTRL(x)		((x)&0x1F)
@@ -176,7 +199,7 @@ extern int tty_close(uint8_t minor);
 extern int tty_ioctl(uint8_t minor, uarg_t request, char *data);
 
 extern void tty_exit(void);
-extern void tty_post(inoptr ino, uint8_t minor, uint8_t flag);
+extern void tty_post(inoptr ino, uint8_t minor, uint16_t flag);
 
 extern void tty_hangup(uint8_t minor);
 extern void tty_carrier_drop(uint8_t minor);
@@ -203,7 +226,7 @@ extern void tty_putc_wait(uint8_t minor, unsigned char c);
 typedef enum {
     TTY_READY_NOW=1,    /* port is ready immediately */
     TTY_READY_SOON=0,   /* we'll be ready shortly, kernel should spin, polling the port repeatedly */
-    TTY_READY_LATER=-1  /* we'll be a long time, put this process to sleep and schedule another */
+    TTY_READY_LATER=2  /* we'll be a long time, put this process to sleep and schedule another */
 } ttyready_t;
 
 /* provided by platform */

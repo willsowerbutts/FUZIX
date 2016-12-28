@@ -9,15 +9,14 @@
 #include <fcntl.h>
 #include <string.h>
 
-int closedir(DIR * dirp)
+int closedir(DIR * dir)
 {
-	struct _dir *dir = (struct _dir *)dirp;
-	if (dir == NULL || dir->d.dd_fd == -1) {
-		errno = EFAULT;
+	if (dir == NULL || dir->dd_fd == -1) {
+		errno = EBADF;
 		return -1;
 	}
-	close(dir->d.dd_fd);
-	dir->d.dd_fd = -1;
+	close(dir->dd_fd);
+	dir->dd_fd = -1;
 	free(dir);
 	return 0;
 }

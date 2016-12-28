@@ -28,7 +28,7 @@ arg_t _rename(void)
 {
 	staticfast inoptr srci, srcp, dsti, dstp;
 	char fname[FILENAME_LEN + 1];
-	int ret = -1;
+	arg_t ret;
 
 	srci = n_open(src, &srcp);
 	/* Source must exist */
@@ -42,7 +42,16 @@ arg_t _rename(void)
 	udata.u_rename = srci;
 	/* Destination maybe does not exist, but parent must */
 	filename(dst, fname);
+
 	dsti = n_open(dst, &dstp);
+	/* Same file - do nothing */
+	if (dsti == srci) {
+		ret = 0;
+		goto nogood3;
+	}
+
+	ret = -1;
+
 	/* Destination not found, but neither is the directory to
 	   put the new node in -> so fail */
 	if (dstp == NULLINODE)
@@ -50,6 +59,12 @@ arg_t _rename(void)
 	/* Can't rename between devices */
 	if (srci->c_dev != dstp->c_dev) {
 		udata.u_error = EXDEV;
+		goto nogood;
+	}
+	/* Can't rename a directory yet.. need to fix this but to do so we
+	   must update .. in the child. Probably a LEVEL 2 functionality ? */
+	if (getmode(srci) == MODE_R(F_DIR)) {
+		udata.u_error = EISDIR;
 		goto nogood;
 	}
 	/* Can't rename one dir into another */
@@ -66,6 +81,11 @@ arg_t _rename(void)
 	}
 	/* Destination exists ? If so we must remove it if possible */
 	if (dsti) {
+		/* Can't overwrite a directory */
+		if (getmode(dsti) == MODE_R(F_DIR)) {
+			udata.u_error = EISDIR;
+			goto nogood;
+		}
 		if (unlinki(dsti, dstp, fname) == -1)
 			goto nogood;
 		/* Drop the reference to the unlinked file */
@@ -83,7 +103,7 @@ arg_t _rename(void)
 	/* get it onto disk - probably overkill */
 	wr_inode(dstp);
 	wr_inode(srcp);
-	_sync();
+	sync();
 	ret = 0;
       nogood2:
 	i_deref(dstp);
@@ -196,7 +216,7 @@ arg_t _rmdir(void)
 	/* Fixme: check for rmdir of /. - ditto for unlink ? */
 
 	/* Not a directory */
-	if (getmode(ino) != F_DIR) {
+	if (getmode(ino) != MODE_R(F_DIR)) {
 		udata.u_error = ENOTDIR;
 		goto nogood;
 	}
@@ -267,12 +287,12 @@ arg_t _mount(void)
 		return (-1);
 	}
 
-	if (getmode(sino) != F_BDEV) {
+	if (getmode(sino) != MODE_R(F_BDEV)) {
 		udata.u_error = ENOTBLK;
 		goto nogood;
 	}
 
-	if (getmode(dino) != F_DIR) {
+	if (getmode(dino) != MODE_R(F_DIR)) {
 		udata.u_error = ENOTDIR;
 		goto nogood;
 	}
@@ -289,7 +309,7 @@ arg_t _mount(void)
 		goto nogood;
 	}
 
-	_sync();
+	sync();
 
 	if (fmount(dev, dino, flags)) {
 		udata.u_error = EBUSY;
@@ -330,7 +350,7 @@ arg_t _umount(void)
 	if (!(sino = n_open(spec, NULLINOPTR)))
 		return (-1);
 
-	if (getmode(sino) != F_BDEV) {
+	if (getmode(sino) != MODE_R(F_BDEV)) {
 		udata.u_error = ENOTBLK;
 		goto nogood;
 	}
@@ -353,7 +373,7 @@ arg_t _umount(void)
 			goto nogood;
 		}
 
-	_sync();
+	sync();
 
 	i_deref(mnt->m_fs->s_mntpt);
 	/* Give back the buffer we pinned at mount time */
@@ -431,7 +451,7 @@ arg_t _uadmin(void)
 {
 	if (esuper())
 		return -1;
-	_sync();
+	sync();
 	/* Wants moving into machine specific files */
 	if (cmd == A_SHUTDOWN || cmd == A_DUMP)
 		trap_monitor();

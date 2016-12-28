@@ -3,8 +3,8 @@
 #include <string.h>
 #include <unistd.h>
 
-#define ERRORS	38
-const char *err[38] = {
+#define ERRORS	45
+const char *err[45] = {
   "Success",
   "Operation not permitted",
   "No such file or directory",
@@ -42,7 +42,14 @@ const char *err[38] = {
   "Math result not representable",
   "Lock table full",
   "Directory is not empty",
-  "File name too long"
+  "File name too long",
+  "Address family not supported",
+  "Operation already in progress",
+  "Address not available",
+  "Invalid system call number",
+  "Protocol family not supported",
+  "Operation not supported on transport endpoint",
+  "Connection reset by peer"
 };
 
 static uint8_t buf[16384];

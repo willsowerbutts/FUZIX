@@ -12,8 +12,8 @@
 #undef CONFIG_SWAP_ONLY
 
 #define CONFIG_BANK_FIXED
-#define MAX_MAPS 4
-#define MAP_SIZE 0x7C00U
+#define MAX_MAPS 16
+#define MAP_SIZE 0x7F00U
 #define CONFIG_BANKS	1
 /* And swapping */
 #define SWAPDEV 2049		/* DriveWire drive 1 */
@@ -25,11 +25,13 @@
 /* Permit large I/O requests to bypass cache and go direct to userspace */
 #define CONFIG_LARGE_IO_DIRECT
 
+/* Reclaim the discard space for buffers */
+#define CONFIG_DYNAMIC_BUFPOOL
+
 #define MAX_BLKDEV  	3	/* 2 IDE drives + 1 SPI */
 #define SD_DRIVE_COUNT	1	/* Could be higher with multiple CS used */
-#define DEVICE_IDE              /* enable if IDE interface present */
-#define IDE_REG_CS1_BASE 0xFF50
-#define IDE_IS_MMIO  1		/* MMIO IDE */
+#define CONFIG_SD               /* enable if SD  interface present */
+#define CONFIG_IDE              /* enable if IDE interface present */
 
 /* Video terminal, not a serial tty */
 #define CONFIG_VT
@@ -43,15 +45,12 @@
 
 #define VIDEO_BASE	0x0400
 
-/* RS/Tandy Color Computer keyboard */
-#undef CONFIG_COCO_KBD
-
 #define TICKSPERSEC 50   /* Ticks per second */
 /* FIXME: This will move once we put the display in the kernel bank and
    sort the banker out */
 #define PROGBASE    0x8000  /* also data base */
 #define PROGLOAD    0x8000  /* also data base */
-#define PROGTOP     0xFC00  /* Top of program */
+#define PROGTOP     0xFD00  /* Top of program */
 
 #define BOOT_TTY (512 + 1)   /* Set this to default device for stdio, stderr */
                           /* In this case, the default is the first TTY device */
@@ -61,10 +60,20 @@
 #define CMDLINE	NULL	  /* Location of root dev name */
 
 /* Device parameters */
-#define NUM_DEV_TTY 2
+#define NUM_DEV_TTY 4
 #define NDEVS    2        /* Devices 0..NDEVS-1 are capable of being mounted */
                           /*  (add new mountable devices to beginning area.) */
 #define TTYDEV   BOOT_TTY /* Device used by kernel for messages, panics */
-#define NBUFS    6       /* Number of block buffers */
+#define NBUFS    5       /* Number of block buffers at boot time */
 #define NMOUNTS	 2	  /* Number of mounts at a time */
 #define swap_map(x)	((uint8_t *)(x))
+
+/* Drivewire Defines */
+
+#define DW_VSER_NUM 1     /* No of Virtual Serial Ports */
+#define DW_VWIN_NUM 1     /* No of Virtual Window Ports */
+#define DW_MIN_OFF  3     /* Minor number offset */
+
+/* Remember to update platform-dragon-nx32/kernel.defs to match */
+
+extern void platform_discard(void);

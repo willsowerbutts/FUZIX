@@ -258,7 +258,7 @@ static int pagemap_can_alloc(uint16_t size)
 /*
  *	Realloc our buffer. Naïve implementation.
  */
-int pagemap_realloc(uint16_t size)
+int pagemap_realloc(usize_t size)
 {
 	if (size == udata.u_top)
 		return 0;
@@ -281,7 +281,7 @@ void pagemap_free(ptptr p)
 {
 	struct hole *m = (struct hole *) p->page;
 	if (m->flags != HOLE_USED)
-		panic("double free");
+		panic(PANIC_DOUBLE_FREE);
 	m->flags = HOLE_FREE;
 	sweep_holes(mh);
 }
@@ -290,7 +290,7 @@ void pagemap_free(ptptr p)
  *	This is the only spot which cares what size a "block" is. For now its 256
  *	bytes because that makes shifting it really cheap!
  */
-static unsigned int pagemap_mem_used(void)
+static usize_t pagemap_mem_used(void)
 {
 	struct hole *m;
 	unsigned int ret = 0;

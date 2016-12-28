@@ -14,8 +14,10 @@
 	.globl	_umodhi3
 	.globl  _mulhi3
 	.globl	_ashlhi3
+	.globl	_ashrhi3
 	.globl	_lshrhi3
 	.globl	___ashlsi3
+	.globl  ___ashrsi3
 	.globl	_swab
 
 	; debugging aids
@@ -163,6 +165,9 @@ dispatch_process_signal:
 	tfr d,x
 
 	lslb		;	2 bytes per entry
+;
+;	FIXME: must save Y for same ??
+;
         ; load the address of signal handler function
 	ldy #U_DATA__U_SIGVEC
 	ldu b,y		; now u = udata.u_sigvec[cursig]
@@ -339,6 +344,7 @@ interrupt_return:
             rti
 interrupt_return_x:
 	    tfr x,s
+	    jsr	map_restore
 	    bra interrupt_return
 
 ;  Enter with X being the signal to send ourself
@@ -387,7 +393,7 @@ nmimsg:     .ascii "[NMI]"
 
 nmi_handler:
 	SAM_KERNEL
-	lds #istack_top - 2		; We aren't coming back so this is ok
+	lds #istack_top-2		; We aren't coming back so this is ok
 	jsr map_kernel
         ldx #nmimsg
 	jsr outstring
@@ -423,14 +429,6 @@ outnewline:
         jsr outchar
         rts
 
-outd:  ; prints D in hex.
-	pshs b
-        tfr b,a
-        jsr outcharhex
-        puls b
-        jsr outcharhex
-        rts
-
 outx:  ; prints X
 	pshs d
 	tfr x,d
@@ -443,6 +441,12 @@ outy:  ; prints Y
 	bsr outd
 	puls d,pc
 
+outd:  ; prints D in hex.
+	pshs b
+	bsr outcharhex
+	puls a
+	; FALL THROUGH
+
 ; print the byte in A as a two-character hex value
 outcharhex:
 	pshs a
@@ -450,18 +454,17 @@ outcharhex:
         lsra
         lsra
         lsra
-        jsr outnibble
+        bsr outnibble
 	puls a
-        jsr outnibble
-        rts
+	; FALL THROUGH
 
 ; print the nibble in the low four bits of A
 outnibble:
         anda #0x0f ; mask off low four bits
         cmpa #9
-        ble numeral ; less than 10?
+        ble num    ; less than 10?
         adda #0x07 ; start at 'A' (10+7+0x30=0x41='A')
-numeral:adda #0x30 ; start at '0' (0x30='0')
+num:    adda #0x30 ; start at '0' (0x30='0')
         jsr outchar
         rts
 
@@ -568,6 +571,46 @@ _ashlhi3_1:
 _ashlhi3_2:
 	puls	x,pc
 
+
+
+___ashrsi3:
+	pshs	u
+	; FIXME temporary hack until we fix gcc-6809 or our use of it
+	; the argument passing doesn't match so we'll mangle it
+	ldu 4,s
+	stu ,x
+	ldu 6,s
+	stu 2,x
+	ldb 9,s
+	;; FIXME: insert 16 optimization here
+	;; remember to propagate top bit for signage
+try_8@	cmpb	#8
+	blo 	try_rest@
+	subb	#8
+	ldu	1,x		; shift what we can down by 1 byte
+	stu	2,x
+	lda	,x
+	sta	1,x
+	clr	,x		; default top byte to positive
+	tst	1,x		; test old msb for sign
+	bpl     try_8@		; go try another 8 shifts
+	dec	,x		; dec to make top byte negative
+	bra	try_8@		; go try another 8 shifts
+try_rest@
+	tstb		
+	beq	done@
+do_rest@
+	; Shift by 1
+	asr	,x
+	ror	1,x
+	ror	2,x
+	ror	3,x
+	decb
+	bne	do_rest@
+done@
+	puls	u,pc
+
+	
 ___ashlsi3:
 	pshs	u
 
@@ -622,4 +665,16 @@ _lshrhi3_1:
 	rorb
 	bra	_lshrhi3_1
 _lshrhi3_2:
+	puls	x,pc
+
+_ashrhi3:
+	pshs	x
+1$:
+	leax	-1,x
+	cmpx	#-1
+	beq	2$
+	asra
+	rorb
+	bra	1$
+2$:
 	puls	x,pc

@@ -12,15 +12,15 @@ typedef int32_t arg_t;
 typedef uint32_t uarg_t;		/* Holds arguments */
 typedef uint32_t usize_t;		/* Largest value passed by userspace */
 typedef int32_t susize_t;
+typedef int32_t ssize_t;
 typedef uint32_t uaddr_t;
 typedef uint32_t uptr_t;		/* User pointer equivalent */
 
+
 #define uputp  uputl			/* Copy user pointer type */
 #define ugetp  ugetl			/* between user and kernel */
-
-extern void ei(void);
-extern irqflags_t di(void);
-extern void irqrestore(irqflags_t f);
+#define uputi  uputl			/* Copy user int type */
+#define ugeti  ugetl			/* between user and kernel */
 
 extern void *memcpy(void *, const void  *, size_t);
 extern void *memset(void *, int, size_t);
@@ -50,12 +50,15 @@ typedef union {            /* this structure is endian dependent */
     } h;
 } ticks_t;
 
-/* We don't need any banking bits really */
-#define CODE1
-#define CODE2
-#define COMMON
-#define VIDEO
-#define DISCARD
+extern uint16_t swab(uint16_t);
+
+#define	ntohs(x)	(x)
+#define ntohl(x)	(x)
+
+#define cpu_to_le16(x)	le16_to_cpu(x)
+#define le16_to_cpu(x)	(uint16_t)(__builtin_bswap16((uint16_t)(x)))
+#define cpu_to_le32(x)	le32_to_cpu(x)
+#define le32_to_cpu(x)	(uint32_t)(__builtin_bswap32((uint32_t)(x)))
 
 /* Pointers are 32bit */
 #define POINTER32
@@ -63,10 +66,12 @@ typedef union {            /* this structure is endian dependent */
 /* Sane behaviour for unused parameters */
 #define used(x)
 
-#define __fastcall__
-
 /* Our udata is handled slightly quirkily - use a register global */
 
 register struct u_data *udata_ptr asm ("a5");
 
 #define udata (*udata_ptr)
+
+#define BIG_ENDIAN
+
+#define CONFIG_STACKSIZE	1024

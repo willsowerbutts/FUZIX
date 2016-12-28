@@ -17,11 +17,8 @@ typedef uint16_t uptr_t;		/* User pointer equivalent */
 
 #define uputp  uputw			/* Copy user pointer type */
 #define ugetp  ugetw			/* between user and kernel */
-
-#define __fastcall__
-extern void ei(void);
-extern irqflags_t di(void);
-extern void irqrestore(irqflags_t f);
+#define uputi  uputw			/* Copy user int type */
+#define ugeti  ugetw			/* between user and kernel */
 
 extern void *  memcpy(void *, void *, size_t);
 extern void *  memset(void *, int, size_t);
@@ -37,7 +34,7 @@ extern size_t  strlen(const char *);
    a bit less as C stack is not return stack */
 #define brk_limit() ((((uint16_t)udata.u_syscall_sp) | 0xFF) - 384)
 
-#define staticfast	static
+#define staticfast	auto
 
 /* User's structure for times() system call */
 typedef unsigned long clock_t;

@@ -1,29 +1,75 @@
 	.module drivewire
 
 	.globl _dw_operation
+	.globl _dw_transaction
 	.globl _dw_reset
 
 	.globl map_process_a
+	.globl map_process_always
 	.globl map_kernel
 
 
 
 	.area _COMMONMEM
 
+;
+;	Implement dw_transaction for the TRS80 port
+;
+_dw_transaction:
+	push ix
+	ld ix,#0
+	add ix,sp
+	ld a,-10(ix)
+	or a
+	push af
+	call nz, map_process_always
+	ld h,-2(ix)
+	ld l,-3(ix)
+	ld b,-4(ix)
+	ld c,-5(ix)
+	ld de, #txbyte
+	call dw_op
+	ld h,-6(ix)
+	ld l,-7(ix)
+	ld b,-8(ix)
+	ld c,-9(ix)
+	ld de, #rxbyte
+	call dw_op
+	ld hl, #0
+	jr nc, read_good
+	; We don't distinguish framing and short frames FIXME
+	dec hl
+read_good:
+	pop af
+	call nz, map_kernel
+	pop ix
+	ret
+
 	; dw_reset(driveptr)
 _dw_reset:
 	ret
 
-	; dw_operation(cmdblock, driveptr)
+dw_op:
+	ld (op + 1),de
+dw_op_loop:
+	ld a,b
+	or c
+	ret z
+op:	call rxbyte		; self modifies
+	ret c
+	ld (hl),a
+	inc hl
+	dec bc
+	jr dw_op_loop
+
+	; dw_operation(cmdblock)
 _dw_operation:
 	pop bc		; return
 	pop iy		; cmdblock
-	pop de		; driveptr
-	push de
 	push iy
 	push bc
 
-	ld b, 5(iy)	; page map
+	ld b, 7(iy)	; page map LSB
 	call map_process_a
 	ld h, 3(iy)	; pointer
 	ld l, 4(iy)
@@ -31,7 +77,7 @@ _dw_operation:
 	ld c, 2(iy)
 	xor a
 	cp (iy)
-	ld a, (de)
+	ld a, 5(iy)
 	jr nz, is_write
 	call dw_read_sector
 dw_op_ret:

@@ -31,10 +31,8 @@
 	    .globl _font4x6
 	    .globl _vtinit
 	    .globl platform_interrupt_all
-	    .globl _video_setpixel
 	    .globl _video_cmd
-	    .globl _video_attr
-	    .globl _video_op
+	    .globl _vtattr_notify
 
             ; exported debugging tools
             .globl _trap_monitor
@@ -155,10 +153,119 @@ _program_vectors:
             ld (0x0001), hl
 
             ld (0x0066), a  ; Set vector for NMI
-            ld hl, #nmi_handler
+            ld hl, #my_nmi_handler
             ld (0x0067), hl
-	    jr map_kernel
+	    jp map_kernel
 
+;
+;	These are shared and agreed with the bootstrap code in the
+;	bootstrap low page
+;
+entry_sp     .equ 0x1BE
+kernel_sp   .equ 0x1C0
+resume_vector .equ 0x1C2
+suspend_map .equ 0x1C4
+entry_banks .equ 0x1C8
+suspend_stack .equ 0x1FE
+
+suspend_r:   .db 0
+
+my_nmi_handler:
+	    push af
+	    xor a
+	    jr suspend_1
+	    push af
+suspend:
+	    ld a,#1
+suspend_1:
+	    ld (suspend_r),a
+	    ld a,i
+	    push af
+	    di
+	    ld a,#0x80
+	    out (0x10),a
+	    ; Save our SP
+	    ld (kernel_sp), sp
+	    ld sp,#suspend_stack
+	    push bc
+	    push de
+	    push hl
+	    push ix
+	    push iy
+	    exx
+	    push bc
+	    push de
+	    push hl
+	    ex af,af'
+	    push af
+	    ; Register map saved
+	    ld hl,#suspend_map
+	    call save_maps
+	    ld hl,#resume
+	    ld (resume_vector),hl
+	    ld de,(suspend_r)
+	    ; Now switch the low 48K (OS) banks back as they were
+	    ; and run the "official" OS NMI handler
+	    ld hl,(entry_banks)
+	    ld sp,(entry_sp);
+	    ld a,l
+	    out (0x10),a
+	    ld a,h
+	    out (0x11),a
+	    ld a,(entry_banks+2)
+	    out (0x12),a
+	    ld a,e
+	    or a
+	    jr z, nmi_and_resume
+	    ; Hand triggered suspend
+	    ld a,(entry_sp)
+	    ; To NC100 OS
+	    ret
+nmi_and_resume:
+	    call 0x66
+;
+;	Called by the booter via our resume vector. The bootstrap or ROM has
+;	already set the high 16K correctly before calling us there
+;
+resume:
+	    ld hl,#0
+	    ld (resume_vector),hl
+	    ld hl,#suspend_map+1
+	    ; Begin by restoring the mapping for 0x4000-0xBFFF
+	    ld a,(hl)
+	    out (0x11),a
+	    inc hl
+	    ld a,(hl)
+	    out (0x12),a
+	    ; Map the bootstrap bank back in at 0x0000-0x3FFF so we can get
+	    ; our data back
+            ld a,#0x80
+	    out (0x10),a
+	    ; Restore the registers
+	    ld sp,#suspend_stack-36
+	    pop af
+	    ex af,af
+	    pop hl
+	    pop de
+	    pop bc
+	    exx
+	    pop iy
+	    pop ix
+	    pop hl
+	    pop de
+	    pop bc
+	    ; Switch back to the kernel stack pointer. This could be in any
+	    ; bank so we must not dereference it until we fix the low 16K
+	    ld sp,(kernel_sp)
+	    ; Grab the low 16K mapping we had before
+	    ld a,(suspend_map)
+	    out (0x10),a	; booter page in 0x0000-0x3FFF vanishes here
+				; and our vectors re-appear
+	    pop af		; IRQ state
+	    jp po,no_irq_on
+	    ei
+no_irq_on:  pop af
+	    ret
 ;
 ;	Userspace mapping pages 7+  kernel mapping pages 3-5, first common 6
 ;
@@ -224,6 +331,12 @@ map_save:
 	    push hl
 	    push af
 	    ld hl, #map_savearea
+	    call save_maps
+	    pop af
+	    pop hl
+	    ret
+
+save_maps:
 	    in a, (0x10)
 	    ld (hl), a
 	    inc hl
@@ -235,8 +348,6 @@ map_save:
 	    inc hl
 	    in a, (0x13)
 	    ld (hl), a
-	    pop af
-	    pop hl
 	    ret
 
 map_savearea:
@@ -255,7 +366,7 @@ outcharw:
             ret
 
 ;
-; Disk helper
+; Disk helper  - FIXME should be IRQ safe nowdays
 ;
 _rd_memcpy:  push ix
 	    ld ix, #0
@@ -340,6 +451,7 @@ vtdone:	    pop af
 	    pop af
 	    ret po
 	    ei
+_vtattr_notify:
 	    ret
 
 ;
@@ -562,159 +674,76 @@ _cursor_off:
 	    ld de, (_cursorpos)
 	    jr cursor_do
 
-;
-;	Entered with HL pointing to the co-ordinates
-;	Returns with HL pointing to the byte address of the pixel
-;	A holding the pixel mask
-;	C holding the bit number
-;	DE holding the screen byte address
-;
-coords:
-	    ld a, (hl)		; low bits of X
-	    and #7		; pixel
-	    ld c, a
-	    ld a, (hl)
-	    ld de, #0		; clear D - and keep D at zero
-	    rra
-	    rra
-	    rra			; A is the byte offset
-	    inc hl
-	    bit 0, (hl)
-	    jr z, xonleft
-	    set 5,a		; right hand side
-xonleft:
-	    inc hl
-	    ld a, (hl)		; y low (no y high needed) 0-63 or 0-127 */
-	    add a		; x 2
-	    ld l, a
-	    ld h, d		; zero
-	    add hl, hl		; x 4
-	    add hl, hl		; x 8
-	    add hl, hl		; x 16
-	    add hl, hl		; x 32
-	    add hl, hl		; x 64	lines into bytes offset
-	    add hl, de		; pixel in this byte
-	    ex de, hl
-	    ld hl, #setpixel_bittab
-	    ld b, d		; zero
-	    add hl, bc
-	    ld a, (hl)		; our pixel mask
-	    ex de, hl
-	    ret
 
-setpixel_optab:
-	    nop				;
-	    or (hl)			; COPY
-	    nop
-	    or (hl)			; SET
-	    cpl				; complement pixel mask
-	    and (hl)			; CLEAR by anding with mask
-	    nop
-	    xor (hl)			; INVERT
-setpixel_bittab:
-	    .db 128,64,32,16,8,4,2,1
-
-_video_setpixel:
-	    in a, (0x11)
-	    push af
-	    ld a, #0x43			; Map the display
+;
+;	Turn a co-ordinate pair in DE into an address in DE
+;	and map the video. Unlike the font version we work in bytes across
+;	(for NC100, NC200 needs doing)
+;
+addr_de_pix:
+	    ld a, #0x43
 	    out (0x11), a
-	    call video_setpixel
-	    pop af
-	    out (0x11), a
-	    ret
 
-video_setpixel:
-	    ld a, (_video_attr + 2)	; mode
-	    or a			; copy ?
-	    jr nz, setpixel_notdraw
-	    ld a, (_video_attr)		; ink
-	    or a			; white ?
-	    jr nz, setpixel_notdraw	; a = 1 = set so good
-	    ld a, #2			; clear
-setpixel_notdraw:
-	    ld e, a
-	    ld d, #0
-	    ld hl, #setpixel_optab
-	    add hl, de
-	    ld a, (hl)
-	    ld (setpixel_opcode), a	; Self modifying
-	    inc hl
-	    ld a, (hl)
-	    ld (setpixel_opcode+1), a	; Self modifying
-	    ld bc, (_video_op)	; B is the count
-	    ld a, b
-	    and #0x1f		; max 31 pixels per op
-	    ret z
-	    push bc
-	    ld hl, #_video_op + 2	; co-ordinate pairs
-setpixel_loop:
-	    push hl
-	    call coords
-setpixel_opcode:
-	    nop			; nop or cpl
-	    ld a, (hl)		; screen
-	    ld (hl), a		; store back to display
-	    pop hl
-	    inc hl
-	    inc hl
-	    inc hl
-	    inc hl
-	    pop bc
-	    djnz setpixel_loop
+	    ld b, d	; save X
+	    ld a, e	; turn Y into a pixel row
+	    sla d	; X is in 0-63, rotate it left twice
+	    sla d
+	    srl a	; multiple by 64 A into DE
+	    rr  d	; roll two bits into D pushing the X bits
+	    srl a	; back where they came from
+	    rr  d
+	    add #VIDEO_BASEH	; screen start (0x7000 or 0x6000 for NC200)
+	    ld  e, d
+	    ld  d, a
 	    ret
-
 ;
-;	Need different logic for NC200 ?
+;	For NC100 (NC200 needs doing)
+;
+;	video_cmd(uint8_t *buf)
 ;
 _video_cmd:
+	    pop de
+	    pop hl
+	    push hl
+	    push de
 	    in a, (0x11)
 	    push af
-	    ld a, #0x43			; Map the display
-	    out (0x11), a
-	    call video_cmd
+	    ld e,(hl)
+	    inc hl
+	    inc hl
+	    ld d,(hl)
+	    inc hl
+	    inc hl
+	    call addr_de_pix	; turn DE into screen address (HL is kept)
+nextline:
+	    push de
+nextop:
+	    xor a
+	    ld b, (hl)
+	    cp b
+	    jr z, endline
+	    inc hl
+	    ld c,(hl)
+	    inc hl
+oploop:
+	    ld a,(de)
+	    and c
+	    xor (hl)
+	    ld (de), a
+	    inc de
+	    djnz oploop
+	    inc hl
+	    jr nextop
+endline:    pop de
+	    ex de,hl
+	    ld bc, #64
+	    add hl, bc
+	    ex de, hl
+	    inc hl
+	    xor a
+	    cp (hl)		; 0 0 = end (for blank lines just do 01 ff 00)
+	    jr nz, nextline
 	    pop af
 	    out (0x11), a
 	    ret
 
-video_cmd:
-	    ld hl, #_video_op
-	    ld e, (hl)		; offset
-	    inc hl
-	    ld a, (hl)
-	    cp #0x10
-	    ret nc		; over end
-	    ld d, a
-	    inc hl
-	    ld a, (hl)		; count
-	    cp #124		; 2 bytes offset, 2 bytes length, 124 data
-	    ret nc
-	    ld c, a
-	    inc hl
-	    ld a, (hl)
-	    or a
-	    ret nz		; too big
-	    ld b, a
-	    push hl
-	    ld l, e
-	    ld h, d
-	    add hl, bc		; end offset
-	    ld a, h
-	    cp #0x10
-	    jr c, cmd_over	; doesn't fit
-	    ld hl, #VIDEO_BASE
-	    add hl, de		; offset
-	    ex de, hl
-	    pop hl		; input buffer
-	    ldir
-	    ret
-cmd_over:   pop hl
-	    ret
-
-;
-;	Needed here so they don't vanish when we map the screen
-;
-_video_op:
-	    .ds 128
-_video_attr:
-	    .ds 4

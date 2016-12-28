@@ -11,10 +11,13 @@
 /* Use C helpers for usermem */
 #undef CONFIG_USERMEM_C
 
+/* Reclaim discard space for buffers */
+#define CONFIG_DYNAMIC_BUFPOOL
+
 /* We use flexible 16K banks so use the helper */
 #define CONFIG_BANK16
 #define CONFIG_BANKS	4
-#define MAX_MAPS 32-3
+#define MAX_MAPS 128-3
 #define MAPBASE 0x0000
 /* And swapping */
 /* #define SWAPDEV  2051	 */
@@ -25,12 +28,12 @@
 #define UDATA_BLOCKS	0	/* We swap the uarea in the data */
 #define UDATA_SWAPSIZE	0
 #define MAX_SWAPS	32
-#define swap_map(x)  ((uint8_t *)(x))
+#define swap_map(x)  ((uint8_t *)(x & 0x3fff ))
 
 /* The Drivewire block dev rawmode=1 doesn't work just now
    with the bank16k.c memory layout (yet), so we have to
    use legacy binary loading... */
-#define CONFIG_LEGACY_EXEC
+/* #define CONFIG_LEGACY_EXEC */
 
 
 /* Video terminal, not a serial tty */
@@ -40,10 +43,10 @@
 // #define CONFIG_VT_SIMPLE
 /* Vt definitions */
 #define VT_BASE      (uint8_t *)0xb400
-#define VT_WIDTH	80
-#define VT_HEIGHT	21
-#define VT_RIGHT	79
-#define VT_BOTTOM	20
+#define VT_WIDTH	curpty->width
+#define VT_HEIGHT	curpty->height
+#define VT_RIGHT	curpty->right
+#define VT_BOTTOM	curpty->bottom
 #define VT_INITIAL_LINE 0
 
 extern unsigned char vt_map( unsigned char c );
@@ -59,7 +62,7 @@ extern unsigned char vt_map( unsigned char c );
                             /* Temp FIXME set to serial port for debug ease */
 
 /* Boot devices */
-#define BOOTDEVICENAMES ",,,,,,,,dw"
+#define BOOTDEVICENAMES "hd#,,,,,,,,dw"
 
 
 
@@ -70,7 +73,7 @@ extern unsigned char vt_map( unsigned char c );
 #define NUM_DEV_TTY 10
 #define TTYDEV   BOOT_TTY /* Device used by kernel for messages, panics */
 #define NBUFS    6       /* Number of block buffers */
-#define NMOUNTS	 4	  /* Number of mounts at a time - nothing mountable! */
+#define NMOUNTS	 4	  /* Number of mounts at a time */
 
 #define CONFIG_COCO_KBD   /* Use CoCo key maps rather than Dragon */
 
@@ -83,6 +86,21 @@ extern unsigned char vt_map( unsigned char c );
 
 /* Block device define */
 #define MAX_BLKDEV  4     /* 2 IDE + 2 SDC */
-#define DEVICE_IDE        /* enable if IDE interface present */
-#define IDE_REG_CS1_BASE 0xFF50
-#define IDE_IS_MMIO  1		/* MMIO IDE */
+#undef  CONFIG_COCOSDC    /* Darren Atkinson's "CoCoSDC" cartridge */
+#define CONFIG_IDE        /* enable if IDE interface present */
+
+#define CONFIG_RTC        /* enable RTC code */
+#define CONFIG_DWTIME_INTERVAL 10  /* time between dw timer polls in secs */
+
+/* Level 2 groups, coredumps, network */
+#define CONFIG_LEVEL_2
+#define CONFIG_NET
+#define CONFIG_NET_NATIVE
+
+/* redefine tty queue primitives to use our banking ones */
+void putq( unsigned char *ptr, char c );
+unsigned char getq( unsigned *ptr );
+#define CONFIG_INDIRECT_QUEUES
+typedef unsigned char *queueptr_t;
+#define GETQ(p) getq(p)
+#define PUTQ(p, v) putq((p), (v))

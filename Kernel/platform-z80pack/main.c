@@ -3,9 +3,10 @@
 #include <kdata.h>
 #include <printf.h>
 #include <devtty.h>
+#include <devatsim.h>
+#include <net_z80pack.h>
 
-uint16_t ramtop = PROGTOP;
-
+uaddr_t ramtop = PROGTOP;
 
 void pagemap_init(void)
 {
@@ -28,9 +29,33 @@ void platform_interrupt(void)
 {
  tty_pollirq();
  timer_interrupt();
+// netat_poll();
+ netz_poll();
 }
 
 /* Nothing to do for the map of init */
 void map_init(void)
 {
 }
+
+uint8_t platform_param(unsigned char *p)
+{
+ used(p);
+ return 0;
+}
+
+#ifdef CONFIG_LEVEL_2
+
+/* We always use 512 byte paths so no special pathbuf needed */
+
+char *pathbuf(void)
+{
+ return tmpbuf();
+}
+
+void pathfree(char *tb)
+{
+ brelse(tb);
+}
+
+#endif

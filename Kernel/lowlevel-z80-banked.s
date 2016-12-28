@@ -42,8 +42,9 @@
         .globl trap_illegal
 	.globl nmi_handler
 	.globl interrupt_handler
-	.globl _di
-	.globl _irqrestore
+	.globl ___hard_di
+	.globl ___hard_ei
+	.globl ___hard_irqrestore
 	.globl _in
 	.globl _out
 
@@ -296,23 +297,26 @@ _doexec:
 ;
 ;  Called from process context (hopefully)
 ;
-;  FIXME: hardcoded RST38 won't work on all boxes
+;  FIXME: hardcoded RST30 won't work on all boxes
 ;
 null_handler:
 	; kernel jump to NULL is bad
 	ld a, (U_DATA__U_INSYS)
 	or a
-	jp z, trap_illegal
+	jp nz, trap_illegal
 	; user is merely not good
 	ld hl, #7
 	push hl
-	ld hl, (U_DATA__U_PTAB)
+	ld ix, (U_DATA__U_PTAB)
+	ld l,P_TAB__P_PID_OFFSET(ix)
+	ld h,P_TAB__P_PID_OFFSET+1(ix)
 	push hl
-	ld hl, #10		; signal (getpid(), SIGBUS)
+	ld hl, #39		; signal (getpid(), SIGBUS)
 	rst #0x30		; syscall
-	pop hl
-	pop hl
-	ld hl, #0
+	ld hl, #0xFFFF
+	push hl
+	dec hl			; #0
+	push hl
 	rst #0x30		; exit
 
 
@@ -383,8 +387,9 @@ interrupt_handler:
 	; Get onto the IRQ stack
 	ld (istack_switched_sp), sp
 	ld sp, #istack_top
-
+.ifeq PROGBASE
 	ld a, (0)
+.endif
 
 	call map_save
 	;
@@ -394,9 +399,10 @@ interrupt_handler:
 	; We need the kernel mapped for the IRQ handling
 	call map_kernel
 
+.ifeq PROGBASE
 	cp #0xC3
 	call nz, null_pointer_trap
-
+.endif
 	; So the kernel can check rapidly for interrupt status
 	; FIXME: move to the C code
 	ld a, #1
@@ -469,7 +475,7 @@ interrupt_pop:
 null_pointer_trap:
 	ld a, #0xC3
 	ld (0), a
-
+	ld hl, #11		; SIGSEGV
 trap_signal:
 	push hl
 	ld hl, (U_DATA__U_PTAB);
@@ -672,21 +678,22 @@ _in:
 	.include "lowlevel-z80-cmos-banked.s"
 .endif
 
-;
-;	These are needed by the experimental SDCC size optimisations
-;
 	.area _COMMONMEM
 
-	.globl __enter, __enter_s
+	.globl ___sdcc_enter_ix
+	.globl ___sdcc_enter_ix_n
 
-__enter:
+___sdcc_enter_ix:
 	pop hl		; return address
 	push ix		; save frame pointer
 	ld ix, #0
 	add ix, sp	; set ix to the stack frame
 	jp (hl)		; and return
 
-__enter_s:
+;
+; Not used unless experimentally patched sdcc
+;
+___sdcc_enter_ix_n:
 	pop hl		; return address
 	push ix		; save frame pointer
 	ld ix, #0
@@ -703,9 +710,12 @@ __enter_s:
 ;
 ;	This must be in common in banked builds
 ;
-	.globl __sdcc_call_hl
+	.globl ___sdcc_call_hl
+	.globl ___sdcc_call_iy
 
-__sdcc_call_hl:
+___sdcc_call_iy:
+	.byte 0xFD	; IY override and fall through
+___sdcc_call_hl:
 	jp (hl)
 
 ;
@@ -736,6 +746,7 @@ _memset:
 	dec a
 	ret z		; > 1 ?
 	ld d, h
+
 	ld e, l
 	inc de
 	dec bc

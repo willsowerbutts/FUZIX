@@ -1,20 +1,13 @@
 #include "cpu.h"
 
-void *memcpy(void *d, const void *s, size_t sz)
-{
-  unsigned char *dp = d;
-  const unsigned char *sp = s;
-  while(sz--)
-    *dp++=*sp++;
-  return d;
-}
-
-void *memset(void *d, int c, size_t sz)
-{
-  unsigned char *p = d;
-  while(sz--)
-    *p++ = c;
-  return d;
+int strcmp( char *a, char *b ){
+    int ret;
+    while (1){
+	ret = *a - *b++;
+	if( ! *a || ret )
+	    return ret;
+	a++;
+    }
 }
 
 size_t strlen(const char *p)

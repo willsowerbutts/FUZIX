@@ -8,60 +8,40 @@
 #include "globvar.h"
 #include "version.h"
 
-#define DRELBUFSIZE	3072
 #define ERR		(-1)
 #define ERRBUFSIZE	1024
 #define INBUFSIZE	1024
 #define OUTBUFSIZE	2048
 #define TRELBUFSIZE	1024
 
-#ifdef REL_OUTPUT
-PRIVATE char *drelbuf;		/* extra output buffer for data relocations */
-PRIVATE char *drelbufptr;	/* data relocation output buffer ptr */
-PRIVATE char *drelbuftop;	/* data relocation output buffer top */
-#endif
-PRIVATE char *errbuf;		/* error buffer (actually uses STDOUT) */
-PRIVATE char *errbufptr;	/* error buffer ptr */
-PRIVATE char *errbuftop;	/* error buffer top */
-PRIVATE int  errfil = STDOUT_FILENO;
-PRIVATE char *inbuf;		/* input buffer */
-PRIVATE char *inbufend;		/* input buffer top */
-PRIVATE char *inbufptr;		/* end of input in input buffer */
-PRIVATE int infd;		/* input file descriptor */
-PRIVATE char *inputname;	/* name of current input file */
-PRIVATE char *outbuf;		/* output buffer */
-PRIVATE char *outbufptr;	/* output buffer ptr */
-PRIVATE char *outbuftop;	/* output buffer top */
-PRIVATE int outfd;		/* output file descriptor */
-PRIVATE mode_t outputperms;	/* permissions of output file */
-PRIVATE char *outputname;	/* name of output file */
-PRIVATE char *refname;		/* name of program for error reference */
-#ifdef REL_OUTPUT
-PRIVATE char *trelbuf;		/* extra output buffer for text relocations */
-PRIVATE char *trelbufptr;	/* text relocation output buffer ptr */
-PRIVATE char *trelbuftop;	/* text relocation output buffer top */
-PRIVATE int trelfd;		/* text relocation output file descriptor */
-#endif
-PRIVATE unsigned warncount;	/* count of warnings */
+static char *errbuf;		/* error buffer (actually uses STDOUT) */
+static char *errbufptr;	/* error buffer ptr */
+static char *errbuftop;	/* error buffer top */
+static int  errfil = STDOUT_FILENO;
+static char *inbuf;		/* input buffer */
+static char *inbufend;		/* input buffer top */
+static char *inbufptr;		/* end of input in input buffer */
+static int infd;		/* input file descriptor */
+static char *inputname;	/* name of current input file */
+static char *outbuf;		/* output buffer */
+static char *outbufptr;	/* output buffer ptr */
+static char *outbuftop;	/* output buffer top */
+static int outfd;		/* output file descriptor */
+static mode_t outputperms;	/* permissions of output file */
+static char *outputname;	/* name of output file */
+static const char *refname;	/* name of program for error reference */
+static unsigned warncount;	/* count of warnings */
 
-#ifdef MSDOS
-#define off_t	long		/* NOT a typedef */
-#endif
+static void errexit(char *message);
+static void flushout(void);
+static void outhexdigs(bin_off_t num);
+static void outputerror(char *message);
+static void put04x(unsigned num);
+static void putstrn(const char *message);
+static void refer(void);
+static void stderr_out(void);
 
-FORWARD void errexit P((char *message));
-FORWARD void flushout P((void));
-#ifdef REL_OUTPUT
-FORWARD void flushtrel P((void));
-#endif
-FORWARD void outhexdigs P((bin_off_t num));
-FORWARD void outputerror P((char *message));
-FORWARD void put04x P((unsigned num));
-FORWARD void putstrn P((char *message));
-FORWARD void refer P((void));
-FORWARD void stderr_out P((void));
-
-PUBLIC void ioinit(progname)
-char *progname;
+void ioinit(const char *progname)
 {
     infd = ERR;
     if (*progname)
@@ -72,78 +52,57 @@ char *progname;
        if(*progname=='/')
           refname=progname+1;
 
-#ifdef REL_OUTPUT
-    drelbuf = malloc(DRELBUFSIZE);
-    drelbuftop = drelbuf + DRELBUFSIZE;
-#endif
+    /* FIXME: we need a malloc with error check here */
     errbuf = malloc(ERRBUFSIZE);
     errbufptr = errbuf;
     errbuftop = errbuf + ERRBUFSIZE;
     inbuf = malloc(INBUFSIZE);
     outbuf = malloc(OUTBUFSIZE);/* outbuf invalid if this fails but then */
 				/* will not be used - tableinit() aborts */
+    if (errbuf == NULL || inbuf == NULL || outbuf == NULL) {
+	outofmemory();
+	exit(1);
+    }
     outbuftop = outbuf + OUTBUFSIZE;
-#ifdef REL_OUTPUT
-    trelbuf = malloc(TRELBUFSIZE);
-    trelbuftop = trelbuf + TRELBUFSIZE;
-#endif
 }
 
-PUBLIC void closein()
+void closein(void)
 {
     if (infd != ERR && close(infd) < 0)
 	inputerror("cannot close");
     infd = ERR;
 }
 
-PUBLIC void closeout()
+void closeout()
 {
-#ifdef REL_OUTPUT
-    unsigned nbytes;
-#endif
-
     flushout();
-#ifdef REL_OUTPUT
-    flushtrel();
-    nbytes = drelbufptr - drelbuf;
-    if (write(trelfd, drelbuf, nbytes) != nbytes)
-	outputerror("cannot write");
-#endif
     if (close(outfd) == ERR)
 	outputerror("cannot close");
-#ifdef REL_OUTPUT
-    if (close(trelfd) == ERR)
-	outputerror("cannot close");
-#endif
 }
 
-PUBLIC void errtrace(name, level)
-char *name;
-int level;
+void errtrace(char *name, int level)
 {
     while (level-- > 0)
 	putbyte(' ');
     putstrn(name);
 }
 
-PUBLIC void executable()
+void executable(void)
 {
     if (errcount)
         unlink(outputname);
-#ifndef MSDOS
     else
 	chmod(outputname, outputperms);
-#endif
 }
 
-PUBLIC void flusherr()
+void flusherr(void)
 {
     if( errbufptr != errbuf )
        write(errfil, errbuf, (unsigned) (errbufptr - errbuf));
     errbufptr = errbuf;
 }
 
-PRIVATE void stderr_out()
+static void stderr_out(void)
 {
    if( errfil != STDERR_FILENO )
    {
@@ -152,7 +111,7 @@ PRIVATE void stderr_out()
    }
 }
 
-PRIVATE void flushout()
+static void flushout(void)
 {
     unsigned nbytes;
 
@@ -162,74 +121,31 @@ PRIVATE void flushout()
     outbufptr = outbuf;
 }
 
-#ifdef REL_OUTPUT
-PRIVATE void flushtrel()
+void openin(char *filename)
 {
-    unsigned nbytes;
-
-    nbytes = trelbufptr - trelbuf;
-    if (write(trelfd, trelbuf, nbytes) != nbytes)
-	outputerror("cannot write");
-    trelbufptr = trelbuf;
-}
-#endif
-
-PUBLIC void openin(filename)
-char *filename;
-{
-#if 0 /* XXX - this probably won't work with constructed lib names? */
-    if (infd == ERR || strcmp(inputname, filename) != 0)
-#endif
-    {
-	closein();
-	inputname = filename;	/* this relies on filename being static */
-#ifdef O_BINARY
-	if ((infd = open(filename, O_BINARY|O_RDONLY)) < 0)
-#else
-	if ((infd = open(filename, O_RDONLY)) < 0)
-#endif
-	    inputerror("cannot open");
-	inbufptr = inbufend = inbuf;
-    }
+    closein();
+    inputname = filename;	/* this relies on filename being static */
+    if ((infd = open(filename, O_RDONLY)) < 0)
+	inputerror("cannot open");
+    inbufptr = inbufend = inbuf;
 }
 
-PUBLIC void openout(filename)
-char *filename;
+void openout(char *filename)
 {
     mode_t oldmask;
 
     outputname = filename;
-#ifdef O_BINARY
-    if ((outfd = open(filename, O_BINARY|O_WRONLY|O_CREAT|O_TRUNC, CREAT_PERMS)) == ERR)
-#else
     if ((outfd = creat(filename, CREAT_PERMS)) == ERR)
-#endif
 	outputerror("cannot open");
 
-#ifndef MSDOS
-    /* Can't do this on MSDOS; it upsets share.exe */
     oldmask = umask(0); umask(oldmask);
     outputperms = ((CREAT_PERMS | EXEC_PERMS) & ~oldmask);
     chmod(filename, outputperms & ~EXEC_PERMS);
-#endif
 
-#ifdef REL_OUTPUT
-    drelbufptr = drelbuf;
-#endif
     outbufptr = outbuf;
-#ifdef REL_OUTPUT
-#ifdef O_BINARY
-    if ((trelfd = open(filename, O_BINARY|O_WRONLY, CREAT_PERMS)) == ERR)
-#else
-    if ((trelfd = open(filename, O_WRONLY, CREAT_PERMS)) == ERR)
-#endif
-	outputerror("cannot reopen");
-    trelbufptr = trelbuf;
-#endif
 }
 
-PRIVATE void outhexdigs(num)
-register bin_off_t num;
+static void outhexdigs(bin_off_t num)
 {
     if (num >= 0x10)
     {
@@ -239,8 +155,7 @@ register bin_off_t num;
     putbyte(hexdigit[num]);
 }
 
-PRIVATE void put04x(num)
-register unsigned num;
+static void put04x(unsigned num)
 {
     putbyte(hexdigit[num / 0x1000]);
     putbyte(hexdigit[(num / 0x100) & 0x0F]);
@@ -250,8 +165,7 @@ register unsigned num;
 
 #ifdef LONG_OFFSETS
 
-PUBLIC void put08lx(num)
-register bin_off_t num;
+void put08lx(bin_off_t num)
 {
     put04x(num / 0x10000);
     put04x(num % 0x10000);
@@ -259,8 +173,7 @@ register bin_off_t num;
 
 #else /* not LONG_OFFSETS */
 
-PUBLIC void put08x(num)
-register bin_off_t num;
+void put08x(bin_off_t num)
 {
     putstr("0000");
     put04x(num);
@@ -268,9 +181,7 @@ register bin_off_t num;
 
 #endif /* not LONG_OFFSETS */
 
-PUBLIC void putbstr(width, str)
-unsigned width;
-char *str;
+void putbstr(unsigned width, char *str)
 {
     unsigned length;
     
@@ -279,8 +190,7 @@ char *str;
     putstr(str);
 }
 
-PUBLIC void putbyte(ch)
-int ch;
+void putbyte(int ch)
 {
     register char *ebuf;
 
@@ -294,22 +204,20 @@ int ch;
     errbufptr = ebuf;
 }
 
-PUBLIC void putstr(message)
-char *message;
+void putstr(const char *message)
 {
     while (*message != 0)
 	putbyte(*message++);
 }
 
-PRIVATE void putstrn(message)
-char *message;
+static void putstrn(const char *message)
 {
     putstr(message);
     putbyte('\n');
     flusherr(); errfil = STDOUT_FILENO;
 }
 
-PUBLIC int readchar()
+int readchar(void)
 {
     int ch;
 	
@@ -333,9 +241,7 @@ PUBLIC int readchar()
     return ch;
 }
 
-PUBLIC void readin(buf, count)
-char *buf;
-unsigned count;
+void readin(char *buf, unsigned count)
 {
     int ch;
     
@@ -347,9 +253,7 @@ unsigned count;
     }
 }
 
-PUBLIC bool_pt readineofok(buf, count)
-char *buf;
-unsigned count;
+bool_pt readineofok(char *buf, unsigned count)
 {
     int ch;
     
@@ -362,34 +266,21 @@ unsigned count;
     return FALSE;
 }
 
-PUBLIC void seekin(offset)
-unsigned long offset;
+void seekin(unsigned long offset)
 {
     inbufptr = inbufend = inbuf;
     if (lseek(infd, (off_t) offset, SEEK_SET) != offset)
 	prematureeof();
 }
 
-PUBLIC void seekout(offset)
-unsigned long offset;
+void seekout(unsigned long offset)
 {
     flushout();
     if (lseek(outfd, (off_t) offset, SEEK_SET) != offset)
 	outputerror("cannot seek in");
 }
 
-#ifdef REL_OUTPUT
-PUBLIC void seektrel(offset)
-unsigned long offset;
-{
-    flushtrel();
-    if (lseek(trelfd, (off_t) offset, SEEK_SET) != offset)
-	outputerror("cannot seek in");
-}
-#endif
-
-PUBLIC void writechar(ch)
-int ch;
+void writechar(int ch)
 {
     register char *obuf;
 
@@ -403,27 +294,7 @@ int ch;
     outbufptr = obuf;
 }
 
-#ifdef REL_OUTPUT
-PUBLIC void writedrel(buf, count)
-register char *buf;
-unsigned count;
-{
-    register char *rbuf;
-
-    rbuf = drelbufptr;
-    while (count--)
-    {
-	if (rbuf >= drelbuftop)
-	    inputerror("data relocation buffer full while processing");
-	*rbuf++ = *buf++;
-    }
-    drelbufptr = rbuf;
-}
-#endif
-
-PUBLIC void writeout(buf, count)
-register char *buf;
-unsigned count;
+void writeout(char *buf, unsigned count)
 {
     register char *obuf;
 
@@ -441,46 +312,21 @@ unsigned count;
     outbufptr = obuf;
 }
 
-#ifdef REL_OUTPUT
-PUBLIC void writetrel(buf, count)
-register char *buf;
-unsigned count;
-{
-    register char *rbuf;
-
-    rbuf = trelbufptr;
-    while (count--)
-    {
-	if (rbuf >= trelbuftop)
-	{
-	    trelbufptr = rbuf;
-	    flushtrel();
-	    rbuf = trelbufptr;
-	}
-	*rbuf++ = *buf++;
-    }
-    trelbufptr = rbuf;
-}
-#endif
-
 /* error module */
 
-PRIVATE void errexit(message)
-char *message;
+static void errexit(char *message)
 {
     putstrn(message);
     exit(2);
 }
 
-PUBLIC void fatalerror(message)
-char *message;
+void fatalerror(char *message)
 {
     refer();
     errexit(message);
 }
 
-PUBLIC void inputerror(message)
-char *message;
+void inputerror(char *message)
 {
     refer();
     putstr(message);
@@ -488,16 +334,14 @@ char *message;
     errexit(inputname);
 }
 
-PUBLIC void input1error(message)
-char *message;
+void input1error(char *message)
 {
     refer();
     putstr(inputname);
     errexit(message);
 }
 
-PRIVATE void outputerror(message)
-char *message;
+static void outputerror(char *message)
 {
     refer();
     putstr(message);
@@ -505,22 +349,18 @@ char *message;
     errexit(outputname);
 }
 
-PUBLIC void outofmemory()
+void outofmemory(void)
 {
     inputerror("out of memory while processing");
 }
 
-PUBLIC void prematureeof()
+void prematureeof(void)
 {
     inputerror("premature end of");
 }
 
-PUBLIC void redefined(name, message, archentry, deffilename, defarchentry)
-char *name;
-char *message;
-char *archentry;
-char *deffilename;
-char *defarchentry;
+void redefined(char *name, char *message, char *archentry,
+		      char *deffilename, char *defarchentry)
 {
     ++warncount;
     refer();
@@ -547,8 +387,7 @@ char *defarchentry;
     putstrn("");
 }
 
-PUBLIC void interseg(fname, aname, name)
-char *fname, *aname, *name;
+void interseg(char *fname, char *aname, char *name)
 {
     ++errcount;
     refer();
@@ -567,15 +406,14 @@ char *fname, *aname, *name;
     putstrn("");
 }
 
-PRIVATE void refer()
+static void refer(void)
 {
     stderr_out();
     putstr(refname);
     putstr(": ");
 }
 
-PUBLIC void reserved(name)
-char *name;
+void reserved(char *name)
 {
     ++errcount;
     stderr_out();
@@ -583,10 +421,7 @@ char *name;
     putstrn(name);
 }
 
-PUBLIC void size_error(seg, count, size)
-int seg;
-bin_off_t count;
-bin_off_t size;
+void size_error(int seg, bin_off_t count, bin_off_t size)
 {
     refer();
     putstr("seg ");
@@ -598,8 +433,7 @@ bin_off_t size;
     errexit("");
 }
 
-PUBLIC void undefined(name)
-char *name;
+void undefined(char *name)
 {
     ++errcount;
     stderr_out();
@@ -607,35 +441,29 @@ char *name;
     putstrn(name);
 }
 
-PUBLIC void usage()
+void usage(void)
 {
+    /* FIXME: a lot of these don't apply to all platforms */
     stderr_out();
     putstr("usage: ");
     putstr(refname);
-#ifdef REL_OUTPUT
-    errexit("\
- [-03NMdimrstz[-]] [-llib_extension] [-o outfile] [-Ccrtfile]\n\
-       [-Llibdir] [-Olibfile] [-Ttextaddr] [-Ddataaddr] [-Hheapsize] infile...");
-#else
     errexit("\
  [-03NMdimstz[-]] [-llib_extension] [-o outfile] [-Ccrtfile]\n\
        [-Llibdir] [-Olibfile] [-Ttextaddr] [-Ddataaddr] [-Hheapsize] infile...");
-#endif
 }
 
-PUBLIC void version_msg()
+void version_msg(void)
 {
     stderr_out();
 #ifdef VERSION
-    putstr("ld86 version: ");
+    putstr("ld version: ");
     errexit(VERSION);
 #else
-    errexit("ld86 version unknown");
+    errexit("ld version unknown");
 #endif
 }
 
-PUBLIC void use_error(message)
-char *message;
+void use_error(char *message)
 {
     refer();
     putstrn(message);

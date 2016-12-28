@@ -1,7 +1,7 @@
 /* We have an RTC */
 #define CONFIG_RTC
 /* Enable to make ^Z dump the inode table for debug */
-#undef CONFIG_IDUMP
+#define CONFIG_IDUMP
 /* Enable to make ^A drop back into the monitor */
 #undef CONFIG_MONITOR
 /* Profil syscall support (not yet complete) */
@@ -17,6 +17,10 @@
 /* 8 60K banks, 1 is kernel */
 #define MAX_MAPS	7
 #define MAP_SIZE	0xF000U
+/* Level 2 feature set */
+#define CONFIG_LEVEL_2
+/* Networking (not usable yet but for debug/development) */
+#define CONFIG_NET
 
 /* Banks as reported to user space */
 #define CONFIG_BANKS	1
@@ -47,3 +51,5 @@
 #define SWAPDEV  (256 + 1)  /* Device for swapping. (z80pack drive J) */
 #define NBUFS    10       /* Number of block buffers */
 #define NMOUNTS	 4	  /* Number of mounts at a time */
+
+#define platform_discard()

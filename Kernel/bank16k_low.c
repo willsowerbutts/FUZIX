@@ -21,6 +21,9 @@
  *	SWAPDEV		if using swap
  *
  *	Page numbers must not include 0 (0 is taken as swapped)
+ *
+ *	Swap needs debugging and fixes before it will be usable (review
+ *	bank16k.c)
  */
 
 
@@ -44,7 +47,7 @@ static unsigned char pfptr = 0;
 void pagemap_add(uint8_t page)
 {
 	if (pfptr == MAX_MAPS)
-		panic("map over");
+		panic(PANIC_MAPOVER);
 	pfree[pfptr++] = page;
 }
 
@@ -176,8 +179,8 @@ int swapout(ptptr p)
 	uint16_t size = (0x4000 - SWAPBASE) >> 9;
 	uint8_t *pt = (uint8_t *)&p->page;
 
-	if (page)
-		panic("process already swapped!\n");
+	if (!page)
+		panic(PANIC_ALREADYSWAP);
 #ifdef DEBUG
 	kprintf("Swapping out %x (%d)\n", p, p->p_page);
 #endif
@@ -195,11 +198,11 @@ int swapout(ptptr p)
 
 	/* Write the app (and possibly the uarea etc..) to disk */
 	for (i = 0; i < 4; i ++) {
-		swapwrite(SWAPDEV, blk, size, base, *pt++);
+		swapwrite(SWAPDEV, blk, size<<9, base, *pt++);
 		base += 0x4000;
 		/* Last bank is determined by SWAP SIZE. We do the maths
 		   in 512's (0x60 = 0xC000) */
-		if (i == 3)
+		if (i == 2)
 			size = SWAP_SIZE_EXCL_ZP - 0x60;
 		else
 			size = 0x20;
@@ -237,16 +240,16 @@ void swapin(ptptr p, uint16_t map)
 	   we don't want to overwrite the live stack but buffer and fix up
 	   in tricks.s */
 #ifdef CONFIG_HAS_LOW_PAGE
-	swapread(SWAPDEV, blk, 1, 0x0000);
+	swapread(SWAPDEV, blk, 512, 0x0000);
 	blk++;
 #endif
 
 	for (i = 0; i < 4; i ++) {
-		swapread(SWAPDEV, blk, size, base, *pt++);
+		swapread(SWAPDEV, blk, size<<9, base, *pt++);
 		base += 0x4000;
 		/* Last bank is determined by SWAP SIZE. We do the maths
 		   in 512's (0x60 = 0xC000) */
-		if (i == 3)
+		if (i == 2)
 			size = SWAP_SIZE_EXCL_ZP - 0x60;
 		else
 			size = 0x20;	/* 16 K */

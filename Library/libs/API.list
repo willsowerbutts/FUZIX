@@ -1,0 +1,288 @@
+Initial target API (SYS5.2 equivalent - ish)
+
+Z80 = implementation for float form in the SDCC library and we should eventually
+use that not our own if possible
+
+a64l			CODE
+abort			FIXME
+abs			CODE
+access			CODE
+acos			CODE
+acosf			Z80 | CODE
+acosh			CODE
+acoshf			CODE (check Z80)
+advance
+alarm			CODE
+asctime			CODE
+asin			CODE
+asinf			Z80 | CODE
+asinh			CODE
+asinhf			CODE (check Z80)
+assert			CODE
+atan			CODE
+atanf			Z80 | CODE
+atan2			CODE
+atan2f			Z80 | CODE
+atanh			CODE
+atanhf			CODE (check Z80)
+atof			CODE
+atoi			CODE
+atol			CODE
+bsearch			CODE
+calloc			CODE
+ceil			CODE
+ceilf			Z80 | CODE
+chdir			CODE
+chmod			CODE
+chown			CODE
+clearerr		CODE
+clock			CODE
+close			CODE
+compile			CODE (but no to spec)
+cos			CODE
+cosf			Z80 | CODE
+cosh			CODE
+coshf			Z80 | CODE
+creat			CODE
+crypt			CODE (but tea not DES)
+ctermid			CODE
+cuserid			CODE
+drand48			CODE
+dup			CODE
+encrypt			NO (obsolete single DES)
+endgrent		CODE
+endpwent		CODE
+endutent		CODE
+erand48			CODE
+erf			CODE
+erfc			CODE
+execl			CODE
+execle			*MISSING ?*
+execlp			CODE
+execv			CODE
+execve			CODE
+execvp			CODE
+exit			CODE
+_exit			CODE
+exp			CODE
+expf			CODE | Z80
+fabs			CODE
+fabsf			CODE | Z80
+fclose			CODE
+fcntl			CODE
+fdopen			CODE
+feof			CODE
+ferror			CODE
+fflush			CODE
+fgetc			CODE
+fgetgrent		CODE
+fgetpwent		CODE
+fgets			CODE
+fileno			CODE
+floor			CODE
+floorf			Z80 | CODE
+fmod			CODE
+fmodf			CODE
+fopen			CODE
+fork			CODE
+fprintf			CODE
+fputc			CODE
+fputs			CODE
+fread			CODE
+free			CODE
+freopen			CODE
+frexp			CODE
+frexpf			CODE
+fscanf			CODE
+fseek			CODE
+fstat			CODE
+ftell			CODE
+ftw			https://opensource.apple.com/source/Libc/Libc-825.26/gen/nftw.c ?
+fwrite			CODE
+gamma			OBSOLETE (added lgamma, tgamma)
+getc			CODE
+getchar			CODE
+getcwd			CODE
+getegid			CODE
+getenv			CODE
+geteuid			CODE
+getgid			CODE
+getgrgid		CODE
+getgrnam		CODE
+getlogin		CODE
+getopt			CODE
+getpass			CODE
+getpgrp			CODE
+getpid			CODE
+getppid			CODE
+getpwent		CODE
+getpwnam		CODE
+getpwuid		CODE
+gets			CODE
+getuid			CODE
+getutline		CODE
+getw			CODE
+gmtime			CODE
+gsignal			OBSOLETE
+hcreate
+hdestroy
+hsearch
+hypot			CODE
+hypotf			CODE
+ioctl			CODE
+isalnum			CODE
+isalpha			CODE
+isascii			CODE
+iscntrl			CODE
+isdigit			CODE
+isgraph			CODE
+islower			CODE
+isprint			CODE
+ispunct			CODE
+isspace			CODE
+isupper			CODE
+isxdigit		CODE
+j0			CODE
+j0f			CODE
+j1			CODE
+j1f			CODE
+jn			CODE
+jnf			CODE
+jrand48			CODE
+kill			CODE
+l64a			CODE
+lcong48			CODE
+ldexp			CODE
+lfind			CODE
+link			CODE
+localtime		CODE
+lockf			NO (flock)
+log			CODE | Z80
+logf			CODE
+log10			CODE
+log10f			CODE
+longjmp			CODE
+lrand48			CODE
+lsearch			CODE
+lseek			CODE
+mallinfo
+malloc			CODE
+mallopt
+MARK
+matherr
+memccpy			CODE
+memchr			CODE
+memcmp			CODE
+memcpy			CODE
+memset			CODE
+mknod			CODE
+mktemp			OBSOLETE
+modf			CODE
+modff			Z80 | CODE
+monitor
+mount			CODE
+mrand48			CODE
+nlist
+nrand48			CODE
+open			CODE
+pause			CODE
+pclose			CODE
+perror			CODE
+pipe			CODE
+popen			CODE
+pow			Z80 | ULY
+printf			CODE (check all fmts included)
+putc			CODE
+putchar			CODE
+putenv			CODE
+putpwent		CODE
+puts			CODE
+pututline		CODE
+putw			CODE
+qsort			CODE
+rand			CODE
+read			CODE
+realloc			CODE
+rewind			CODE
+round						; MUSL ones unsuitable licence
+roundf						;
+scanf			CODE
+seed48			CODE
+setbuf			CODE
+setgid			CODE
+setgrent		CODE
+setjmp			CODE
+setkey			NO (obsolete, single DES)
+setpgrp			CODE
+setuid			CODE
+setutent		CODE
+setvbuf			CODE
+sgetl
+signal			CODE (but kernel bits to do)
+sin			CODE
+sinf			CODE | Z80
+sinh			CODE
+sinhf			CODE
+sleep			CODE
+sprintf			CODE
+sputl
+sqrt			Z80
+srand			CODE
+srand48			CODE
+ssignal			OBSOLETE
+stat			CODE
+step
+stime			CODE
+strcat			CODE
+strchr			CODE
+strcmp			CODE
+strcpy			CODE
+strcspn			CODE
+strlen			CODE
+strncat			CODE
+strncpy			CODE
+strpbrk			CODE
+strrchr			CODE
+strspn			CODE
+strtod			CODE
+strtok			CODE
+strtol			CODE
+swab			CODE
+sync			CODE
+system			CODE
+tan			CODE
+tanf			CODE | Z80
+tanh			CODE
+tanhf			CODE
+tdelete
+tempnam		
+tfind
+time			CODE
+times			CODE
+tmpfile			CODE
+tmpnam			CODE
+toascii			CODE
+tolower			CODE
+_tolower		CODE
+toupper			CODE
+_toupper		CODE
+tsearch
+ttyname			CODE
+twalk
+tzset			CODE
+ulimit
+umask			CODE
+umount			CODE
+uname			CODE
+ungetc			CODE
+unlink			CODE
+ustat
+utime			CODE
+utmpname		CODE
+vfprintf		CODE
+vsprintf		CODE
+wait			CODE
+write			CODE
+y0			CODE
+y1			CODE
+yn			CODE

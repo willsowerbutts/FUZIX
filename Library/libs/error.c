@@ -17,6 +17,10 @@ static uint16_t *__sys_errptr;
 static int __sys_nerr;
 static char retbuf[80];
 
+#define ALIGNMENT	16
+
+#define ALIGNUP(s) (((s) + ALIGNMENT - 1) & ~(ALIGNMENT - 1))
+
 static void _load_errlist(void)
 {
 	struct stat st;
@@ -25,7 +29,7 @@ static void _load_errlist(void)
 		return;
 	if (fstat(fd, &st) < 0 || !S_ISREG(st.st_mode))
 		goto bad;
-	__sys_errlist = sbrk((st.st_size + 3)&~3);
+	__sys_errlist = sbrk(ALIGNUP(st.st_size));
 	if (__sys_errlist == (void *) -1)
 		goto bad;
 	if (read(fd,__sys_errlist, st.st_size) == st.st_size) {

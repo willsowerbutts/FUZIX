@@ -7,6 +7,7 @@
 #include <devlpr.h>
 #include <devtty.h>
 #include <devrtc.h>
+#include <netdev.h>
 
 struct devsw dev_tab[] =  /* The device driver switch table */
 {
@@ -21,7 +22,7 @@ struct devsw dev_tab[] =  /* The device driver switch table */
   /* 3: /dev/lpr	Printer devices */
   {  lpr_open,     lpr_close,   no_rdwr,   lpr_write,  no_ioctl  },
   /* 4: /dev/mem etc	System devices (one offs) */
-  {  no_open,      no_close,    sys_read, sys_write, sys_ioctl  },
+  {  no_open,      sys_close,   sys_read, sys_write, sys_ioctl  },
   /* Pack to 7 with nxio if adding private devices and start at 8 */
 };
 
@@ -42,4 +43,5 @@ void device_init(void)
   /* Add 64 swaps (4MB) to use the entire J drive */
   for (i = 0; i < MAX_SWAPS; i++)
     swapmap_add(i);
+  sock_init();
 }

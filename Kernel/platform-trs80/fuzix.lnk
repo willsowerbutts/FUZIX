@@ -1,7 +1,6 @@
 -mwxuy
 -i fuzix.ihx
 -b _CODE=0x0100
--b _DISCARD=0xD000
 -b _COMMONMEM=0xE800
 -l z80
 platform-trs80/crt0.rel
@@ -30,6 +29,7 @@ inode.rel
 syscall_exec16.rel
 syscall_fs.rel
 syscall_fs2.rel
+syscall_fs3.rel
 syscall_proc.rel
 syscall_other.rel
 tty.rel

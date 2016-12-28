@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 
-extern unsigned char *cmdline;
+extern char *cmdline;
 
 extern struct u_block ub;
 
@@ -17,12 +17,19 @@ extern uint16_t ramsize;
 extern uint16_t procmem;
 extern uint16_t nproc;	   /* Current number of processes */
 extern uint8_t nready;	   /* Number of ready processes */
+extern uint8_t inswap;	   /* Set when swapping and IRQs are enabled */
 
 extern inoptr root;        /* Address of root dir in inode table */
 extern uint16_t root_dev;  /* Device number of root filesystem. */
 extern uint16_t swap_dev;  /* Device number used for swap */
 
 extern struct blkbuf bufpool[NBUFS];
+#ifndef CONFIG_DYNAMIC_BUFPOOL
+#define bufpool_end (bufpool + NBUFS)	/* Define so its a compile time const */
+#else
+extern struct blkbuf *bufpool_end;
+#endif
+
 extern struct p_tab ptab[PTABSIZE];
 extern struct p_tab *ptab_end;
 extern struct oft of_tab[OFTSIZE];       /* Open File Table */
@@ -77,8 +84,19 @@ struct runload {
 extern struct runload loadavg[];
 
 // the system call dispatch table
-#define FUZIX_SYSCALL_COUNT 63
+#ifdef CONFIG_LEVEL_2
+#ifdef CONFIG_NET
+#define FUZIX_SYSCALL_COUNT 99
+#else
+#define FUZIX_SYSCALL_COUNT 80
+#endif
+#else
+#define FUZIX_SYSCALL_COUNT 66
+#endif
+
 typedef arg_t (*syscall_t)(void);
 extern const syscall_t syscall_dispatch[FUZIX_SYSCALL_COUNT];
+
+extern arg_t _nosys(void);
 
 #endif

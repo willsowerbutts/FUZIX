@@ -18,8 +18,8 @@ usize_t valaddr(const char *base, usize_t size)
 	   emulation alone can touch below 0x100 */
 	if (!base || base < (const char *)PROGBASE || base + size < base)
 		size = 0;
-	else if (base + size > (const char *)udata.u_top)
-		size = (char *)udata.u_top - base;
+	else if (base + size > (const char *)(size_t)udata.u_top)
+		size = (char *)(size_t)udata.u_top - base;
 	if (size == 0)
 		udata.u_error = EFAULT;
 	return size;
@@ -45,6 +45,12 @@ uint16_t ugetw(const void *user)
 {
 	if (!valaddr(user, 2))
 		return -1;
+#ifdef MISALIGNED
+	if (MISALIGNED(user, 2)) }
+		ssig(udata.u_proc, SIGBUS);
+		return -1;
+	}
+#endif
 	return _ugetw(user);
 }
 
@@ -82,6 +88,12 @@ int uputw(uint16_t value, void *user)
 {
 	if (!valaddr(user, 2))
 		return -1;
+#ifdef MISALIGNED
+	if (MISALIGNED(user, 2)) }
+		ssig(udata.u_proc, SIGBUS);
+		return -1;
+	}
+#endif
 	return _uputw(value,user);
 }
 
@@ -91,6 +103,42 @@ int uzero(void *user, usize_t count)
 		return -1;
 	return _uzero(user,count);
 }
+
+#ifdef CONFIG_32BIT
+
+uint32_t ugetl(void *uaddr, int *err)
+{
+	if (!valaddr(uaddr, 4)) {
+		if (err)
+			*err = -1;
+		return -1;
+	}
+#ifdef MISALIGNED
+	if (MISALIGNED(user, 4)) }
+		ssig(udata.u_proc, SIGBUS);
+		*err = -1;
+		return -1;
+	}
+#endif
+	if (err)
+		*err = 0;
+	return _ugetl(uaddr);
+}
+
+int uputl(uint32_t val, void *uaddr)
+{
+	if (!valaddr(uaddr, 4))
+		return -1;
+#ifdef MISALIGNED
+	if (MISALIGNED(user, 2)) }
+		ssig(udata.u_proc, SIGBUS);
+		return -1;
+	}
+#endif
+	return _uputl(val, uaddr);
+}
+
+#endif
 
 /*
  *	Optional C language implementation for porting to new processors
@@ -182,7 +230,28 @@ int _uzero(uint8_t *user, usize_t count)
 	return 0;
 }
 
+#ifdef CONFIG_32BIT
+
+uint32_t _ugetl(void *uaddr)
+{
+	uint32_t v;
+	BANK_PROCESS;
+	v = *(uint32_t *)uaddr;
+	BANK_KERNEL;
+	return v;
+}
+
+int _uputl(uint32_t val, void *uaddr)
+{
+	BANK_PROCESS;
+	*(uint32_t *)uaddr = val;
+	BANK_KERNEL;
+	return 0;
+}
+
 #endif
+#endif
+
 #ifdef CONFIG_USERMEM_DIRECT
 
 /* Systems where all memory is always mapped for live processes and kernel */
@@ -191,16 +260,6 @@ usize_t _uget(const uint8_t *user, uint8_t *dest, usize_t count)
 {
 	memcpy(dest, user, count);
 	return 0;
-}
-
-int16_t _ugetc(const uint8_t *user)
-{
-	return *user;
-}
-
-uint16_t _ugetw(const uint16_t *user)
-{
-	return *user;
 }
 
 int _ugets(const uint8_t *user, uint8_t *dest, usize_t count)
@@ -222,21 +281,24 @@ int _uput(const uint8_t *source, uint8_t *user, usize_t count)
 	return 0;
 }
 
-int _uputc(uint16_t value,  uint8_t *user)
-{
-	*user = value;
-	return 0;
-}
-
-int _uputw(uint16_t value,  uint16_t *user)
-{
-	*user = value;
-	return 0;
-}
-
 int _uzero(uint8_t *user, usize_t count)
 {
 	memset(user, 0, count);
 	return 0;
 }
+
+#ifdef CONFIG_32BIT
+
+uint32_t _ugetl(void *uaddr)
+{
+	return *(uint32_t *)uaddr;
+}
+
+int _uputl(uint32_t val, void *uaddr)
+{
+	*(uint32_t *)uaddr = val;
+	return 0;
+}
+
+#endif
 #endif

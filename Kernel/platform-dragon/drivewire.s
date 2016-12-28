@@ -20,8 +20,7 @@ _dw_reset:
 _dw_operation:
 	pshs y
 	; get parameters from C, X points to cmd packet
-	ldy 4,s		; driveptr
-	lda ,y		; for now, contains minor = drive number directly
+	lda 5,x		; minor = drive number
 	ldb ,x		; write flag
 	; buffer location into Y
 	ldy 3,x
@@ -93,9 +92,9 @@ ReRead   pshs  a
 	 ldy   #$0005
 	 lbsr  DWWrite
 	 puls  a
-	 ldx   4,s			get read buffer pointer
-	 ldy   #256			read 256 bytes
-	 ldd   #133*1			1 second timeout
+	 ldx   4,s			; get read buffer pointer
+	 ldy   #256			; read 256 bytes
+	 ldd   #133*1			; 1 second timeout
 	 bsr   DWRead
          bcs   ReadEx
          bne   ReadEx
@@ -133,6 +132,7 @@ JMCPBCK  equ 0
 BAUD38400 equ 0
 
 ; These files are copied almost as-is from HDB-DOS
+	*PRAGMA nonewsource
          include "dw.def"
          include "dwread.s"
          include "dwwrite.s"

@@ -10,16 +10,13 @@
 /* The sleeping range must be together see swap.c */
 #define P_READY         2    /* Runnable   */
 #define P_SLEEP         3    /* Sleeping; can be awakened by signal */
-#define P_XSLEEP        4    /* Sleeping, don't wake up for signal */
-#define P_PAUSE         5    /* Sleeping for pause(); can wakeup for signal */
-#define P_WAIT          6    /* Executed a wait() */
-#define P_FORKING       7    /* In process of forking; do not mess with */
-#define P_ZOMBIE2       8    /* Exited but code pages still valid. */
-#define P_ZOMBIE        9    /* Exited. */
+#define P_STOPPED       4    /* Stopped waiting for SIGCONT */
+#define P_FORKING       5    /* In process of forking; do not mess with */
+#define P_ZOMBIE        6    /* Exited. */
 
 /* Process table entry */
 
-typedef struct p_tab {
+struct p_tab {
     /* WRS: UPDATE kernel.def IF YOU CHANGE THIS STRUCTURE */
     uint8_t     p_status;       /* Process status: MUST BE FIRST MEMBER OF STRUCT */
     uint8_t     p_tty;          /* Process' controlling tty minor # */
@@ -47,17 +44,29 @@ typedef struct p_tab {
 /**HP**/
     uint16_t    p_pgrp;         /* Process group */
     uint8_t     p_nice;
+    uint8_t	p_event;	/* Events */
     uint16_t	p_top;		/* Copy of u_top : FIXME: usize_t */
-#ifdef CONFIG_PROFIL
+};
+
+/* Followed by this structure if profiling supported */
+struct p_prof {
     uint8_t     p_profscale;
     void *      p_profbuf;
     uint16_t    p_profsize;
     uint16_t    p_profoff;
-#endif
 };
 
-#ifndef PTABSIZE
-#define PTABSIZE 15      /* Process table size. */
-#endif
+/* Then this one if level 2 */
+struct p_level_2 {
+    uint16_t	p_session;
+};
+
+/* The offsets of the prof and l2 are not guaranteed to be as per this
+   structure. Use this only for sizing */
+struct p_tab_buffer {
+    struct p_tab	p_tab;
+    struct p_prof	_prof;
+    struct p_level_2	_l2;
+};
 
 #endif /* __PROC_H */
