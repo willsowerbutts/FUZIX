@@ -5,4 +5,3 @@
 # ..and these
 !syscall.s
 !syscall-zx128.s
-!Makefile

@@ -1,4 +1,24 @@
 # SDCC stuff
+Applications/**/*.asm
+Applications/**/*.bin
+Applications/**/*.lk
+Applications/**/*.noi
+Applications/cpm/cpm.def
+Applications/cpm/emulator.ihx
+Applications/cpm/emulator.tmp
+Applications/cpm/runcpm
+Applications/V7/cmd/ed
+Applications/levee/levee-vt52
+Applications/ue/ue
+Applications/ue/ue.ansi
+Applications/ue/ue.fuzix
+Library/**/*.asm
+Library/libs/*.lib
+Library/libs/fuzix/Makefile
+Library/tools/fcc
+Library/tools/binman
+Library/tools/syscall-*
+Library/tools/syscall_*
 *.lnk
 *.lst
 *.map
@@ -17,4 +37,22 @@ size.report
 # Build system output
 .obj
 bin
+# vim
+.*.swp
+# wrs
+filesystem-32m.img
+filesystem-floppy.img
 Standalone/distribution/
+Kernel/platform-n8vem-mark4/diskboot.bin
+Kernel/platform-n8vem-mark4/diskboot.ihx
+Kernel/platform-n8vem-mark4/fuzix.com
+Kernel/platform-p112/flopboot.bin
+Kernel/platform-p112/flopboot.ihx
+Kernel/platform-p112/fuzix-boot.fdd
+Kernel/platform-p112/fuzix.com
+Kernel/platform-zeta-v2/bootrom.bin
+Kernel/platform-zeta-v2/bootrom.ihx
+Kernel/platform-zeta-v2/diskboot.bin
+Kernel/platform-zeta-v2/diskboot.ihx
+Kernel/platform-zeta-v2/fuzix.com
+Kernel/platform-zeta-v2/fuzix.rom
