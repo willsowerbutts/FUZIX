@@ -17,3 +17,4 @@ size.report
 # Build system output
 .obj
 bin
+Standalone/distribution/
