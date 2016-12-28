@@ -1,0 +1,42 @@
+#!/bin/sh
+
+# /opt/fcc should be writable by the current user
+# /opt/fcc/bin should be in $PATH (or symlink fcc, binman from here into /usr/local/bin)
+
+# tools
+make -C Standalone -j4
+
+# compiler wrapper (fcc) and libraries
+make -C Library -j4
+make -C Library install
+make -C Library/libs -j4
+make -C Library/libs install
+
+# applications for root filesystem
+make -C Applications/cave -j4
+make -C Applications/cpm -j4
+make -C Applications/games -j4
+make -C Applications/levee -j4
+make -C Applications/util -j4
+make -C Applications/V7/cmd -j4
+make -C Applications/V7/cmd/sh -f Makefile.z80 -j4
+make -C Applications/V7/games -j4
+# ue won't build cleanly with -j4
+make -C Applications/ue
+
+# filesystem images
+( cd Standalone/filesystem-src; ./build-filesystem ../../filesystem-hdd.img 256 65535 )
+( cd Standalone/filesystem-src; ./build-mini-filesystem ../../filesystem-floppy.img 64 2880 )
+
+# kernels (for the hardware I own)
+make -C Kernel TARGET=n8vem-mark4 clean
+make -C Kernel TARGET=n8vem-mark4 all -j4
+
+make -C Kernel TARGET=zeta-v2 clean
+make -C Kernel TARGET=zeta-v2 all -j4
+
+make -C Kernel TARGET=p112 clean
+make -C Kernel TARGET=p112 all -j4
+
+# finally clean up, cleaning some platform we don't care for
+make -C Kernel TARGET=coco2 clean
