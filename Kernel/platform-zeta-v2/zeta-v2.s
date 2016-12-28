@@ -310,9 +310,7 @@ _program_vectors:
 map_process_always:
 	push hl
 	ld hl,#U_DATA__U_PAGE
-	call map_process_2
-	pop hl
-	ret
+        jr map_process_2_pophl_ret
 
 ;=========================================================================
 ; map_process - map process or kernel pages
@@ -332,9 +330,7 @@ map_process:
 map_kernel:
 	push hl
 	ld hl,#_kernel_pages
-	call map_process_2
-	pop hl
-	ret
+        jr map_process_2_pophl_ret
 
 ;=========================================================================
 ; map_process_2 - map process or kernel pages
@@ -371,6 +367,7 @@ map_process_2:
 map_restore:
 	push hl
 	ld hl,#map_savearea
+map_process_2_pophl_ret:
 	call map_process_2
 	pop hl
 	ret
