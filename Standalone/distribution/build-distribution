@@ -58,4 +58,20 @@ done
 cat $ROOTDIR/Kernel/platform-zeta-v2/fuzix.rom ${DISTRIBUTION}/fs-fuzix-rom | dd conv=sync bs=524288 count=1 of=${DISTRIBUTION}/zeta-v2.rom
 zip -9 ${DISTREL}.zip ${DISTREL}/zeta-v2.rom
 
+# Provide the source!
+echo "Exporting source code"
+git archive --format=tar --prefix=fuzix-src-${DATECODE} HEAD | gzip -9 > ${DISTRIBUTION}/fuzix-src-${DATECODE}.tar.gz
+zip -9 ${DISTREL}.zip ${DISTREL}/fuzix-src-${DATECODE}.tar.gz
+
+## WRS thoughts:
+## - maybe we should integrate this with "buildall"?
+## - maybe that should start with a fresh checkout?
+## - provide source verbatim, not in a .tar.gz?
+## - new directory tree:
+## - /src
+## - /doc
+## - /n8vem-mark4
+## - /p112
+## - /zeta-v2
+
 echo "Built distribution in ${DISTREL}.zip"
