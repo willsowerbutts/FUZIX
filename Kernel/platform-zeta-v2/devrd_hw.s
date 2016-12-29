@@ -4,8 +4,8 @@
 	.globl map_kernel,mpgsel_cache
 
 	; exported symbols (used by devrd.c)
-	.globl _page_copy
-	.globl _src_page, _src_offset, _dst_page, _dst_offset, _cpy_count
+	.globl _rd_page_copy
+	.globl _rd_src_page, _rd_src_offset, _rd_dst_page, _rd_dst_offset, _rd_cpy_count
 
 	.include "kernel.def"
 
@@ -23,35 +23,35 @@
 ;   Data copied
 ;   Destroys AF, BC, DE, HL
 ;=========================================================================
-_page_copy:
-	ld a,(_src_page)
+_rd_page_copy:
+	ld a,(_rd_src_page)
 	ld (mpgsel_cache+1),a		; save the mapping
 	out (MPGSEL_1),a		; map source page to bank #1
-	ld a,(_dst_page)
+	ld a,(_rd_dst_page)
 	ld (mpgsel_cache+2),a		; save the mapping
 	out (MPGSEL_2),a		; map destination page to bank #2
-	ld hl,(_src_offset)		; load offset in source page
+	ld hl,(_rd_src_offset)		; load offset in source page
 	ld a,#0x40			; add bank #1 offset - 0x4000
 	add h				; to the source offset
 	ld h,a
-	ld de,(_dst_offset)
+	ld de,(_rd_dst_offset)
 	ld a,#0x80			; add bank #2 offset - 0x8000
 	add d				; to the destination offset
 	ld d,a
-	ld bc,(_cpy_count)		; bytes to copy
+	ld bc,(_rd_cpy_count)		; bytes to copy
 	ldir				; do the copy
-	call map_kernel			; map the kernel
+	call map_kernel			; map back the kernel
 	ret
 
 ; variables
-_src_page:
+_rd_src_page:
 	.db	0
-_dst_page:
+_rd_dst_page:
 	.db	0
-_src_offset:
+_rd_src_offset:
 	.dw	0
-_dst_offset:
+_rd_dst_offset:
 	.dw	0
-_cpy_count:
+_rd_cpy_count:
 	.dw	0
 ;=========================================================================
