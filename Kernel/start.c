@@ -278,8 +278,10 @@ uint16_t get_root_dev(void)
 {
 	uint16_t rd = BAD_ROOT_DEV;
 
-	if (cmdline && *cmdline)
+	if (cmdline && *cmdline){
 		rd = bootdevice(cmdline);
+                cmdline=NULL;                   /* ignore cmdline if get_root_dev() is called again */
+        }
 
 	while(rd == BAD_ROOT_DEV){
 		kputs("bootdev: ");
@@ -359,21 +361,22 @@ void fuzix_main(void)
 	__hard_ei();		/* Physical interrupts on */
 	kputs("ok.\n");
 
-	/* get the root device */
-	root_dev = get_root_dev();
-
 	/* finish building argv */
 	complete_init();
 
 	/* initialise hardware devices */
 	device_init();
 
-	/* Mount the root device */
-	kprintf("Mounting root fs (root_dev=%d, r%c): ", root_dev,
-		ro ? 'o' : 'w');
+        while(true){
+            /* Get a root device to try */
+            root_dev = get_root_dev();
+            /* Mount the root device */
+            kprintf("Mounting root fs (root_dev=%d, r%c): ", root_dev, ro ? 'o' : 'w');
+            if(fmount(root_dev, NULLINODE, ro) == 0)
+                break;
+            kputs("failed\n");
+        }
 
-	if (fmount(root_dev, NULLINODE, ro))
-		panic(PANIC_NOFILESYS);
 	root = i_open(root_dev, ROOTINODE);
 	if (!root)
 		panic(PANIC_NOROOT);
