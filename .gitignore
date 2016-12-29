@@ -40,7 +40,7 @@ bin
 # vim
 .*.swp
 # wrs
-filesystem-32m.img
+filesystem-hdd.img
 filesystem-floppy.img
 Standalone/distribution/
 Kernel/platform-n8vem-mark4/diskboot.bin
