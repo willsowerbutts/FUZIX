@@ -208,6 +208,7 @@ clean:
 	rm -f hogs.txt.old tools/*~ version.c include/sysinfoblk.h tools/makeversion
 	+$(MAKE) -C platform-$(TARGET) clean
 	+$(MAKE) -C cpm-loader clean
+	+$(MAKE) -C fuzix-loader clean
 	+$(MAKE) -C tools/bankld clean
 
 clean-all: clean
