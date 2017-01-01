@@ -54,6 +54,10 @@ init_hardware:
         call _program_vectors
         pop hl
 
+        ; Stop floppy drive motors
+        ld a, #0x0C
+        out (FDC_DOR), a
+
 	; initialize UART0
         ld a, (_boot_from_rom)          ; do not set the baud rate and other
         or a                            ; serial line parameters if the BIOS
