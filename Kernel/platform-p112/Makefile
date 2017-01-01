@@ -51,5 +51,5 @@ flopboot.bin:	flopboot.s
 
 image:
 	../cpm-loader/makecpmloader ../cpm-loader/cpmload.bin ../fuzix.bin 0x88 fuzix.com
-	../fuzix-loader/makefuzixloader ../fuzix-loader/fuzixload.bin ../fuzix.bin 0x88 fuzix
+	../cpm-loader/makecpmloader ../cpm-loader/fuzixload.bin ../fuzix.bin 0x88 fuzix
 	./flopboot-mkimage flopboot.bin ../fuzix.bin fuzix-boot.fdd

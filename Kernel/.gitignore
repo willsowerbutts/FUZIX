@@ -6,6 +6,7 @@ fuzix.cdb
 fuzix.ihx
 fuzix.tmp
 hogs.txt
+hogs.txt.old
 platform
 relocs.dat
 version.c

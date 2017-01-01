@@ -3,30 +3,24 @@
                 .area _LOADER (ABS)
                 .org 0x100
 
-; start at 0x100
-start:          jp start2
+start:          ; jump to start of code
+                jp start2
+
+                ; fuzix executable header --------------------------
                 .db 'F'
                 .db 'Z'
                 .db 'X'
                 .db '1'
 
-;
-;       Borrowed idea from UMZIX - put the info in known places then
-;       we can write "size" tools
-;
-;       This is confusing. SDCC doesn't produce a BSS, instead it
-;       produces an INITIALIZED (which everyone else calls DATA) and a
-;       DATA which everyone else would think of as BSS.
-;
-;       FIXME: we need to automate the load page setting
-;
                 .db 0x01                ; page to load at
                 .dw 0                   ; chmem ("0 - 'all'")
                 .dw 0                   ; gives us code size info
                 .dw 0                   ; gives us data size info
                 .dw 0                   ; bss size info
                 .dw 0                   ; spare
-msg:            .ascii 'Booting kernel ...\r\n'
+                ; --------------------------------------------------
+
+msg:            .ascii 'booting ...\r\n'
 endmsg:
 
 start2: 
@@ -51,10 +45,9 @@ start2:
                 push hl
                 rst #0x30               ; execute
 
-                di                      ; now we steal control of the machine from the kernel!
+                di                      ; now we steal control of the machine from the old kernel!
 
-                ; copy ourselves to the very bottom of memory -- 0x00 upwards
-                ld de, #0
+                ld de, #0                       ; copy ourselves to bottom of RAM
                 ld hl, #(doload)                ; start of loader code
                 ld bc, #(endloader-doload)      ; length of our loader
                 ldir                            ; copy copy copy!

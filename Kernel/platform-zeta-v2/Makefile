@@ -54,4 +54,4 @@ image:
 	makebin -s 136 bootrom.ihx > bootrom.bin
 	cat bootrom.bin ../fuzix.bin | dd conv=sync bs=65536 count=1 of=fuzix.rom
 	../cpm-loader/makecpmloader ../cpm-loader/cpmload.bin ../fuzix.bin 0x88 fuzix.com
-	../fuzix-loader/makefuzixloader ../fuzix-loader/fuzixload.bin ../fuzix.bin 0x88 fuzix
+	../cpm-loader/makecpmloader ../cpm-loader/fuzixload.bin ../fuzix.bin 0x88 fuzix
