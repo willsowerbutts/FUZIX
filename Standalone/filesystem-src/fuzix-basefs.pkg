@@ -109,6 +109,7 @@ n 20666 1024 /dev/null
 n 20660 1025 /dev/mem   
 n 20444 1026 /dev/zero  
 n 20666 1027 /dev/proc  
+n 20660 1152 /dev/physmem
 
 f 0644 /etc/group     etc-files/group
 f 0644 /etc/issue     etc-files/issue

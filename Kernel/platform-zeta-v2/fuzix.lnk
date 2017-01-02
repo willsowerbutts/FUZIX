@@ -17,6 +17,7 @@ kdata.rel
 platform-zeta-v2/devfd.rel
 platform-zeta-v2/devfd_hw.rel
 platform-zeta-v2/devrd.rel
+platform-zeta-v2/devphysmem.rel
 platform-zeta-v2/devrd_hw.rel
 platform-zeta-v2/devices.rel
 devio.rel

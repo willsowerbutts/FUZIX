@@ -61,6 +61,8 @@
 #define DEV_RD_ROM_PAGES 28     /* size of the ROM disk in 16KB pages (max 32, any unused pages are at the start of the ROM) */
 #define DEV_RD_RAM_PAGES 0      /* size of the RAM disk in 16KB pages */
 
+#define CONFIG_DEV_PHYSMEM      /* /dev/physpmem -- userspace access to physical memory addresses */
+
 #ifdef CONFIG_PPP
 	/* SD card in ParPortProp */
 	#define CONFIG_SD

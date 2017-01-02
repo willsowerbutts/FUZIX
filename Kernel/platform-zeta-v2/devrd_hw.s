@@ -5,7 +5,7 @@
 
 	; exported symbols (used by devrd.c)
 	.globl _rd_page_copy
-	.globl _rd_src_page, _rd_src_offset, _rd_dst_page, _rd_dst_offset, _rd_cpy_count
+	.globl _rd_src_page, _rd_src_offset, _rd_dst_page, _rd_dst_offset, _rd_cpy_count, _rd_reverse
 
 	.include "kernel.def"
 
@@ -39,11 +39,18 @@ _rd_page_copy:
 	add d				; to the destination offset
 	ld d,a
 	ld bc,(_rd_cpy_count)		; bytes to copy
+        ld a, (_rd_reverse)
+        or a
+        jr z, go
+        ex de,hl                       ; reverse if necessary
+go:
 	ldir				; do the copy
 	call map_kernel			; map back the kernel
 	ret
 
 ; variables
+_rd_reverse:
+	.db	0
 _rd_src_page:
 	.db	0
 _rd_dst_page:

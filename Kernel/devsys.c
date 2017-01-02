@@ -5,6 +5,7 @@
 #include <audio.h>
 #include <netdev.h>
 #include <net_native.h>
+#include <devphysmem.h>
 
 /*
  *	System devices:
@@ -15,6 +16,7 @@
  *	Minor	3	proc
  *	Minor	64	audio
  *	Minor	65	net_native
+ *	Minor   128     physmem (zeta-v2, n8vem-mark4, p112)
  *
  *	Use Minor 128+ for platform specific devices
  */
@@ -48,6 +50,10 @@ int sys_read(uint8_t minor, uint8_t rawflag, uint8_t flag)
 	case 65:
 		return netdev_read(flag);
 #endif
+#ifdef CONFIG_DEV_PHYSMEM
+        case 128:
+                return devphysmem_read();
+#endif
 	default:
 		udata.u_error = ENXIO;
 		return -1;
@@ -72,6 +78,10 @@ int sys_write(uint8_t minor, uint8_t rawflag, uint8_t flag)
 #ifdef CONFIG_NET_NATIVE
 	case 65:
 		return netdev_write(flag);
+#endif
+#ifdef CONFIG_DEV_PHYSMEM
+        case 128:
+                return devphysmem_write();
 #endif
 	default:
 		udata.u_error = ENXIO;

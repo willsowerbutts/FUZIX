@@ -102,6 +102,7 @@ SRCS  = banner.c \
 	which.c \
 	who.c \
 	write.c \
+	flashrom.c \
 	xargs.c
 
 SRCSBAD = sed.c socktest.c seltest.c

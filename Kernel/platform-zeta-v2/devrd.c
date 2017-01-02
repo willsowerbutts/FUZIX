@@ -8,34 +8,28 @@
 #include <kernel.h>
 #include <kdata.h>
 #include <printf.h>
+#define DEVRD_PRIVATE
 #include "devrd.h"
 
-extern uint8_t rd_src_page;     /* source page number */
-extern uint8_t rd_dst_page;     /* destination page number */
-extern uint16_t rd_src_offset;  /* offset of the data in the source page */
-extern uint16_t rd_dst_offset;  /* offset of the data in the destination page */
-extern uint16_t rd_cpy_count;   /* data transfer length */
-extern uint8_t kernel_pages[];  /* kernel's page table */
-
-int ramdisk_transfer(bool is_read, uint8_t minor, uint8_t rawflag);
-void rd_page_copy(void);        /* assembler code */
+int ramdisk_transfer(uint8_t minor, uint8_t rawflag);
 
 int rd_read(uint8_t minor, uint8_t rawflag, uint8_t flag)
 {
     flag;
-    return ramdisk_transfer(true, minor, rawflag);
+    rd_reverse = false;
+    return ramdisk_transfer(minor, rawflag);
 }
 
 int rd_write(uint8_t minor, uint8_t rawflag, uint8_t flag)
 {
     flag;
-    return ramdisk_transfer(false, minor, rawflag);
+    rd_reverse = true;
+    return ramdisk_transfer(minor, rawflag);
 }
 
-int ramdisk_transfer(bool is_read, uint8_t minor, uint8_t rawflag)
+int ramdisk_transfer(uint8_t minor, uint8_t rawflag)
 {
 #if (DEV_RD_RAM_PAGES+DEV_RD_ROM_PAGES) == 0
-    is_read; /* unused */
     minor;   /* unused */
     rawflag; /* unused */
     
@@ -76,7 +70,7 @@ int ramdisk_transfer(bool is_read, uint8_t minor, uint8_t rawflag)
         disk_page_nr += DEV_RD_RAM_START;
         t = DEV_RD_RAM_PAGES << 5;
     }else{ /* minor == RD_MINOR_ROM */
-        if(!is_read) /* ROM is read-only */
+        if(rd_reverse) /* ROM is read-only */
             error = true;
         disk_page_nr += DEV_RD_ROM_START;
         t = DEV_RD_ROM_PAGES << 5;
@@ -95,17 +89,8 @@ int ramdisk_transfer(bool is_read, uint8_t minor, uint8_t rawflag)
         /* split buffer_addr into page and offset, lookup page number in user/kernel page tables */
         rd_dst_page = (rawflag ? ((uint8_t *)&udata.u_page) : kernel_pages)[buffer_addr >> 14];
         rd_dst_offset = buffer_addr & 0x3FFF;
-
-        if (is_read) {
-            rd_src_page = disk_page_nr;
-            rd_src_offset = disk_page_offset;
-        } else {
-            /* move calculated values into correct variables */
-            rd_src_page = rd_dst_page;
-            rd_src_offset = rd_dst_offset;
-            rd_dst_page = disk_page_nr;
-            rd_dst_offset = disk_page_offset;
-        }
+        rd_src_page = disk_page_nr;
+        rd_src_offset = disk_page_offset;
 
         rd_cpy_count = xfer_count;
 
