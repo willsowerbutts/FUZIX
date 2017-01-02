@@ -22,7 +22,7 @@ bool devide_wait(uint8_t bits)
     uint8_t status;
     timer_t timeout;
 
-    timeout = set_timer_ms(500);
+    timeout = set_timer_sec(20);
 
     while(true){
         status = devide_readb(ide_reg_status);
@@ -30,7 +30,8 @@ bool devide_wait(uint8_t bits)
         if((status & (IDE_STATUS_BUSY | IDE_STATUS_ERROR | bits)) == bits)
             return true;
 
-        if((status & (IDE_STATUS_BUSY | IDE_STATUS_ERROR)) == IDE_STATUS_ERROR){
+        if(((status & (IDE_STATUS_BUSY | IDE_STATUS_ERROR)) == IDE_STATUS_ERROR) || /* error */
+           (status == 0x00)){ /* zeta-v2 PPIDE: status=0x00 indicates no drive present */
             kprintf("ide error, status=%x\n", status);
             return false;
         }
