@@ -33,7 +33,8 @@ _rd_go: ld (_rd_reverse), a
 ;=========================================================================
 _rd_page_copy:
         ; split rd_src_address into page and offset -- it's limited to 20 bits (max 0xFFFFF)
-        ; value 0x000ABCDE in memory is: DE BC 0A 00
+        ; example address 0x000ABCDE 
+        ; in memory it is stored: DE BC 0A 00
         ; offset would be 0x0ABCDE & 0x3FFF = 0x3CDE
         ; page would be   0x0ABCDE >> 14    = 0x2A
 
@@ -50,20 +51,13 @@ _rd_page_copy:
         ld (mpgsel_cache+1),a           ; save the mapping
         out (MPGSEL_1),a                ; map source page to bank #1
 
-        ;           .globl outcharhex, outchar, outde, outhl, outbc
-        ;           call outcharhex
-
         ; compute source page offset, store in DE
         ld a,(_rd_src_address+1)
-        and #0x3F
+        and #0x3F                       ; mask to 16KB
         or #0x40                        ; add offset for bank 1
         ld d, a
-        ld a,(_rd_src_address+0)        ; now offset is in DE
-        ld e, a
-
-        ;           call outde
-        ;           ld a, #' '
-        ;           call outchar
+        ld a,(_rd_src_address+0)
+        ld e, a                         ; now offset is in DE
 
         ; compute destination page index (addr 0xABCD >> 14 = 0x02)
         ld a,(_rd_dst_address+1)        ; load top 8 bits
@@ -74,39 +68,31 @@ _rd_page_copy:
         ld c, a                         ; store in l
 
         ; look up page number
-        ld a,(_rd_dst_userspace)        ; userspace?
+        ld a,(_rd_dst_userspace)        ; are we loading into userspace memory?
         or a
         jr nz, rd_translate_userspace
-        ld hl, #_kernel_pages
+        ld hl, #_kernel_pages           ; get kernel page table
         jr rd_do_translate
 rd_translate_userspace:
-        ld hl, #U_DATA__U_PAGE
+        ld hl, #U_DATA__U_PAGE          ; get user process page table
 rd_do_translate:
-        add hl, bc
-        ld a, (hl)                      ; the real page number
+        add hl, bc                      ; add index to base ptr (uint8_t *)
+        ld a, (hl)                      ; load the page number from the page table
 
         ; map destination page
         ld (mpgsel_cache+2),a           ; save the mapping
         out (MPGSEL_2),a                ; map destination page to bank #2
 
-        ;           call outcharhex
-
         ; compute destination page offset, store in HL
         ld a,(_rd_dst_address+1)
-        and #0x3F
+        and #0x3F                       ; mask to 16KB
         or #0x80                        ; add offset for bank #2
         ld h, a
-        ld a, (_rd_dst_address+0)       ; now offset is in HL
-        ld l, a
-
-        ;           call outhl
-        ;           ld a, #' '
-        ;           call outchar
+        ld a, (_rd_dst_address+0)
+        ld l, a                         ; now offset is in HL
 
         ; load byte count
         ld bc,(_rd_cpy_count)           ; bytes to copy
-
-        ;           call outbc
 
         ; check if reversed
         ld a, (_rd_reverse)
