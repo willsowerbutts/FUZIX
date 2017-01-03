@@ -54,6 +54,8 @@ init_from_rom:              ; must be at 0x8B -- bootrom.s enters here
 init_common:
         di
         ld (_boot_from_rom), a
+        or a
+        jr nz, mappedok     ; bootrom.s loads us in the correct pages
 
         ; move kernel to the correct location in RAM
         ; note that this cannot cope with kernel images larger than 48KB
@@ -77,6 +79,7 @@ movenextbank:
         inc a
         out (MPGSEL_2), a       ; map page 34 at 0x8000
 
+mappedok:
         ; switch to stack in high memory
         ld sp, #kstack_top
 
