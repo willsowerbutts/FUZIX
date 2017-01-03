@@ -94,7 +94,6 @@ unsigned char flashrom_chip_read(unsigned long address)
     lseek(mem_fd, FLASHROM_PHYSICAL_BASE + address, SEEK_SET);
     if(read(mem_fd, &buf, 1) != 1)
         printf("read from /dev/physmem failed: %s\n", strerror(errno));
-
     return buf;
 }
 
@@ -254,7 +253,7 @@ bool flashrom_identify(void)
     if(!flashrom_type->chip_id){
         /* we scanned the whole table without finding our chip */
         flashrom_type = NULL;
-        puts("Unknown flash chip.\n");
+        puts("Unknown flash chip.");
         return false;
     }else{
         printf("%s\n", flashrom_type->chip_name);
@@ -282,7 +281,7 @@ void flashrom_read(void)
         offset += DATA_BUFFER_SIZE;
     }
 
-    puts("\rRead complete.   \n");
+    puts("\rRead complete.   ");
 }
 
 unsigned long loaded_address = -1;
@@ -399,7 +398,7 @@ bool check_file_size(void)
         return true;
 
     if(file_size > flashrom_size){
-        puts("ROM image file is larger than flash ROM\n");
+        puts("ROM image file is larger than flash ROM");
         return false;
     }
 
@@ -410,7 +409,7 @@ bool check_file_size(void)
 
     puts("ROM image file is smaller than flash ROM\n" \
          "You may use '--partial' to program only part of the ROM\n" \
-         "from this file.\n");
+         "from this file.");
 
     return false;
 }
@@ -451,7 +450,7 @@ int main(int argc, const char *argv[])
     bool mismatch;
     const char *filename = NULL;
     action_t new_action;
-    puts("flashrom by Will Sowerbutts <will@sowerbutts.com> version 1.0.0\n\n");
+    puts("flashrom by Will Sowerbutts <will@sowerbutts.com> version 1.0.0");
 
     sync(); // just in case we break something
 
@@ -483,7 +482,7 @@ int main(int argc, const char *argv[])
             if(action == ACTION_UNKNOWN){
                 action = new_action;
             }else{
-                puts("More than one command specified!\n");
+                puts("More than one command specified!");
                 usage(argv[0]);
                 return 1;
             }
@@ -491,7 +490,7 @@ int main(int argc, const char *argv[])
     }
     
     if(action == ACTION_UNKNOWN){
-        puts("No command specified!\n");
+        puts("No command specified!");
         usage(argv[0]);
         return 1;
     }
@@ -501,7 +500,7 @@ int main(int argc, const char *argv[])
 
     /* identify flash ROM chip */
     if(!flashrom_identify()){
-        puts("Your flash memory chip is not recognised.\n");
+        puts("Your flash memory chip is not recognised.");
         abort_and_solicit_report();
     }
 
@@ -538,7 +537,7 @@ int main(int argc, const char *argv[])
                 flashrom_verify_and_write(false);
             break;
         default:
-            puts("bug: unknown action\n");
+            puts("bug: unknown action");
             _exit(1);
     }
 
