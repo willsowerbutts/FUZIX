@@ -16,8 +16,7 @@
         .include "../kernel.def"
         .include "kernel.def"
 
-        .area _COMMONMEM
-
+        .area _CODE
 ; kernel calls rd_read(), rd_write(), we just set a flag and then pass control to rd_transfer()
 _rd_write:
         ld a, #1
@@ -27,6 +26,7 @@ _rd_read:
 _rd_go: ld (_rd_reverse), a
         jp _rd_transfer
 
+        .area _COMMONMEM
 ;=========================================================================
 ; _rd_page_copy - Copy data from one physical page to another
 ; See notes in devrd.h for input parameters
