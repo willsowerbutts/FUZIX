@@ -60,6 +60,8 @@ void devide_init_drive(uint8_t drive)
         default: return;
     }
 
+    devide_writeb(ide_reg_devhead, select);
+
     kprintf("IDE drive %d: ", drive);
 
     ide_select(drive);

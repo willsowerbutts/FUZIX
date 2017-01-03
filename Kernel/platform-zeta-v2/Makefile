@@ -1,6 +1,6 @@
 ASRCS = crt0.s tricks.s commonmem.s zeta-v2.s monitor.s
 ASRCS += ds1302-n8vem.s devrd_hw.s
-CSRCS = devices.c main.c devtty.c devrd.c ppide.c devphysmem.c
+CSRCS = devices.c main.c devtty.c devrd.c ppide.c
 DISCARD_CSRCS = discard.c devtty_discard.c
 DISCARD_DSRCS = ../dev/ds1302_discard.c ../dev/devide_discard.c
 DSRCS = ../dev/devfd.c ../dev/devsd.c ../dev/mbr.c ../dev/blkdev.c
