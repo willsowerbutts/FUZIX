@@ -16,6 +16,7 @@
 	.globl mpgsel_cache
 	.globl _kernel_pages
 	.globl _trap_reboot
+	.globl _bufpool
 
         ; imported symbols
         .globl _ramsize
@@ -42,6 +43,13 @@
 CONSOLE_DIVISOR		.equ	(1843200 / (16 * CONSOLE_RATE))
 CONSOLE_DIVISOR_HIGH	.equ	(CONSOLE_DIVISOR >> 8)
 CONSOLE_DIVISOR_LOW	.equ	(CONSOLE_DIVISOR & 0xFF)
+
+;=========================================================================
+; Buffers
+;=========================================================================
+        .area _BUFFERS
+_bufpool:
+        .ds (BUFSIZE * 4) ; adjust NBUFS in config.h in line with this
 
 ;=========================================================================
 ; Initialization code
