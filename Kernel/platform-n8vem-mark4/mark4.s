@@ -10,6 +10,7 @@
         .globl inchar
         .globl outchar
         .globl platform_interrupt_all
+        .globl _bufpool
 
         ; imported symbols
         .globl z180_init_hardware
@@ -22,6 +23,13 @@
         .include "kernel.def"
         .include "../cpu-z180/z180.def"
         .include "../kernel.def"
+
+; -----------------------------------------------------------------------------
+; Buffers
+; -----------------------------------------------------------------------------
+        .area _BUFFERS
+_bufpool:
+        .ds (BUFSIZE * 4) ; adjust NBUFS in config.h in line with this
 
 ; -----------------------------------------------------------------------------
 ; Initialisation code
@@ -51,6 +59,14 @@ init_hardware:
         in0 a, (ASCI_ASEXT1)
         and #0x7f               ; disable RDRF interrupt inhibit
         out0 (ASCI_ASEXT1), a
+
+        ; zero out disk buffers
+        ld hl, #_bufpool
+        ld de, #_bufpool+1
+        ld bc, #(BUFSIZE * 4)-1
+        xor a
+        ld (hl), a
+        ldir
 
         jp z180_init_hardware
 

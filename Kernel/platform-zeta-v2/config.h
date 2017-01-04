@@ -40,7 +40,7 @@
 
 //#define SWAPDEV  (256 + 1)  /* Device for swapping */
 #define CONFIG_DYNAMIC_BUFPOOL /* we expand bufpool to overwrite the _DISCARD segment at boot */
-#define NBUFS    4        /* Number of block buffers */
+#define NBUFS    4        /* Number of block buffers, keep in line with space reserved in zeta-v2.s */
 #define NMOUNTS	 4	  /* Number of mounts at a time */
 
 #define MAX_BLKDEV 4	    /* 1 ROM disk, 1 RAM disk, 1 floppy, 1 PPIDE */
