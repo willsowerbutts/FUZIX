@@ -1,5 +1,5 @@
-ASRCS = crt0.s z180.s commonmem.s mark4.s ds1302-mark4.s monitor.s
-CSRCS += devices.c main.c devtty.c devsdspi.c
+ASRCS = crt0.s z180.s commonmem.s mark4.s ds1302-mark4.s monitor.s devrd_hw.s
+CSRCS += devices.c main.c devtty.c devsdspi.c devrd.c
 DISCARD_CSRCS = discard.c
 DISCARD_DSRCS = ../dev/devide_discard.c ../dev/devsd_discard.c ../dev/ds1302_discard.c
 DSRCS = ../dev/devide.c ../dev/devsd.c ../dev/mbr.c ../dev/blkdev.c ../dev/ds1302.c

@@ -30,7 +30,7 @@
 
 /* We need a tidier way to do this from the loader */
 #define CMDLINE	(0x0081)  /* Location of root dev name */
-#define BOOTDEVICENAMES "hd#"
+#define BOOTDEVICENAMES "hd#,,,rd"
 
 #define CONFIG_DYNAMIC_BUFPOOL /* we expand bufpool to overwrite the _DISCARD segment at boot */
 #define NBUFS    4        /* Number of block buffers, keep in line with space reserved in mark4.s */
@@ -54,6 +54,11 @@
 /* On-board DS1302 on Mark IV, we can read the time of day from it */
 #define CONFIG_RTC
 #define CONFIG_RTC_INTERVAL 30 /* deciseconds between reading RTC seconds counter */
+
+/* Memory backed devices */
+#define CONFIG_RAMDISK          /* enable memory-backed device driver */
+#define DEV_RD_ROM_PAGES 64     /* size of the ROM disk (/dev/rd1) in 4KB pages */
+#define DEV_RD_RAM_PAGES 0      /* size of the RAM disk (/dev/rd0) in 4KB pages */
 
 /* Optional PropIOv2 board on ECB bus */
 //#define CONFIG_PROPIO2		/* #define CONFIG_PROPIO2 to enable as tty3 */
