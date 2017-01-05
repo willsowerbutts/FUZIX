@@ -1,4 +1,4 @@
-/* Mark IV SBC memory driver
+/* Z180 (Mark IV SBC & P112) memory driver
  *
  *     /dev/rd0      (block device)      RAM disk
  *     /dev/rd1      (block device)      ROM disk 
@@ -11,7 +11,7 @@
 #include <kdata.h>
 #include <printf.h>
 #define DEVRD_PRIVATE
-#include "devrd.h"
+#include "devrd_z180.h"
 
 static const uint32_t dev_limit[NUM_DEV_RD] = {
     (uint32_t)(DEV_RD_RAM_PAGES + DEV_RD_RAM_START) << 12, /* block /dev/rd0: RAM */

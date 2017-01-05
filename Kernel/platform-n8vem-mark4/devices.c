@@ -5,7 +5,7 @@
 #include <devsys.h>
 #include <devtty.h>
 #include <devide.h>
-#include <devrd.h>
+#include <devrd_z180.h>
 #include <devsd.h>
 #include <blkdev.h>
 #include <ds1302.h>

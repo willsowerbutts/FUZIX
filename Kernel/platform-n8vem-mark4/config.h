@@ -57,6 +57,8 @@
 
 /* Memory backed devices */
 #define CONFIG_RAMDISK          /* enable memory-backed device driver */
+#define DEV_RD_ROM_SIZE  128    /* size of ROM in 4KB pages (512KB) */
+#define DEV_RD_RAM_SIZE  128    /* size of RAM in 4KB pages (512KB) */
 #define DEV_RD_ROM_PAGES 64     /* size of the ROM disk (/dev/rd1) in 4KB pages */
 #define DEV_RD_RAM_PAGES 0      /* size of the RAM disk (/dev/rd0) in 4KB pages */
 
