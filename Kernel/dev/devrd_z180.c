@@ -13,6 +13,12 @@
 #define DEVRD_PRIVATE
 #include "devrd_z180.h"
 
+/* if neither ROM nor RAM disks are enabled we can save a bit of code size */
+#if (DEV_RD_RAM_PAGES+DEV_RD_ROM_PAGES) > 0
+#define RD_BLOCK_DEVICES
+#endif
+
+#ifdef RD_BLOCK_DEVICES
 static const uint32_t dev_limit[NUM_DEV_RD] = {
     (uint32_t)(DEV_RD_RAM_PAGES + DEV_RD_RAM_START) << 12, /* block /dev/rd0: RAM */
     (uint32_t)(DEV_RD_ROM_PAGES + DEV_RD_ROM_START) << 12, /* block /dev/rd1: ROM */
@@ -24,11 +30,13 @@ static const uint32_t dev_start[NUM_DEV_RD] = {
     (uint32_t)DEV_RD_ROM_START << 12,                      /* block /dev/rd1: ROM */
     0                                                      /* char  /dev/physmem: full 1MB address space */
 };
+#endif
 
 int rd_transfer(uint8_t minor, uint8_t rawflag, uint8_t flag) /* implements both rd_read and rd_write */
 {
-    bool error = false;
     irqflags_t irq;
+#ifdef RD_BLOCK_DEVICES
+    bool error = false;
     uint16_t rv;
 
     flag;    /* unused */
@@ -65,6 +73,16 @@ int rd_transfer(uint8_t minor, uint8_t rawflag, uint8_t flag) /* implements both
     }
 
     if(error){
+#else
+    flag;    /* unused */
+    rawflag; /* unused */
+    rd_dst_userspace = true;
+    rd_dst_address = (uint16_t)udata.u_base;
+    rd_src_address = udata.u_offset;
+    rd_cpy_count = udata.u_count;
+
+    if(minor != RD_MINOR_PHYSMEM || rd_src_address >= (1L << 20)){
+#endif
         udata.u_error = EIO;
         return -1;
     }
@@ -74,7 +92,11 @@ int rd_transfer(uint8_t minor, uint8_t rawflag, uint8_t flag) /* implements both
     rd_page_copy();
     __hard_irqrestore(irq);
 
+#ifdef RD_BLOCK_DEVICES
     return rv;
+#else
+    return rd_cpy_count;
+#endif
 }
 
 
@@ -83,8 +105,12 @@ int rd_open(uint8_t minor, uint16_t flags)
     flags; /* unused */
 
     switch(minor){
+#if DEV_RD_RAM_PAGES > 0
         case RD_MINOR_RAM:
+#endif
+#if DEV_RD_ROM_PAGES > 0
         case RD_MINOR_ROM:
+#endif
         case RD_MINOR_PHYSMEM:
             return 0;
         default:
