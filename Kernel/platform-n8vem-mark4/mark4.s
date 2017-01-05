@@ -15,8 +15,6 @@
         ; imported symbols
         .globl z180_init_hardware
         .globl z180_init_early
-        .globl _ramsize
-        .globl _procmem
         .globl outhl
         .globl outnewline
 
@@ -40,12 +38,6 @@ init_early:
         jp z180_init_early
 
 init_hardware:
-        ; set system RAM size
-        ld hl, #RAM_KB
-        ld (_ramsize), hl
-        ld hl, #(RAM_KB-64)        ; 64K for kernel
-        ld (_procmem), hl
-
         ; enable ASCI interrupts
         in0 a, (ASCI_STAT0)
         or #0x08                ; enable ASCI0 receive interrupts
@@ -59,14 +51,6 @@ init_hardware:
         in0 a, (ASCI_ASEXT1)
         and #0x7f               ; disable RDRF interrupt inhibit
         out0 (ASCI_ASEXT1), a
-
-        ; zero out disk buffers
-        ld hl, #_bufpool
-        ld de, #_bufpool+1
-        ld bc, #(BUFSIZE * 4)-1
-        xor a
-        ld (hl), a
-        ldir
 
         jp z180_init_hardware
 
