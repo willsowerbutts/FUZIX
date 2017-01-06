@@ -28,10 +28,8 @@ void pagemap_init(void)
      * First 64K is used by the kernel. 
      * Each process gets the full 64K for now.
      * Page size is 4KB. */
-    for(i = 0x10; i < ((1024 - (DEV_RD_RAM_PAGES<<2))>>2); i+=0x10){
-        kprintf("pagemap_add(%x)\n", i);
+    for(i = 0x10; i < ((1024 - (DEV_RD_RAM_PAGES<<2))>>2); i+=0x10)
         pagemap_add(i);
-    }
 }
 
 void map_init(void)
