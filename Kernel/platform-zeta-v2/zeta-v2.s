@@ -66,12 +66,6 @@ init_hardware:
         ld a, #0x0C
         out (FDC_DOR), a
 
-        ; program vectors for the kernel
-        ld hl, #0
-        push hl
-        call _program_vectors
-        pop hl
-
 	; initialize UART0
         ld a, (_boot_from_rom)          ; do not set the baud rate and other
         or a                            ; serial line parameters if the BIOS
