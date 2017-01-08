@@ -1,7 +1,8 @@
-/* Zeta SBC V2  memory driver
+/*
+ * memory backed block device driver
  *
  *     /dev/rd0      (block device)      RAM disk
- *     /dev/rd1      (block device)      ROM disk 
+ *     /dev/rd1      (block device)      ROM disk
  *
  * 2017-01-03 William R Sowerbutts, based on RAM disk code by Sergey Kiselev
  */
