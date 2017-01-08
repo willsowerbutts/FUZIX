@@ -32,13 +32,20 @@ _devmem_go:
         ; load the other parameters
         ld hl, (U_DATA__U_BASE)
         ld (_rd_dst_address), hl
-        ld hl, (U_DATA__U_COUNT)
-        ld (_rd_cpy_count), hl
         ld hl, (U_DATA__U_OFFSET)
         ld (_rd_src_address), hl
         ld hl, (U_DATA__U_OFFSET+2)
         ld (_rd_src_address+2), hl
-        jp _rd_platform_copy
+        ld hl, (U_DATA__U_COUNT)
+        ld (_rd_cpy_count), hl
+        ; for single byte transfers we can optimise away the outer loop
+        dec l                           ; test for HL=1
+        ld a, h
+        or l
+        jp nz, _rd_platform_copy        ; > 1 byte, do it the hard way
+        call _rd_page_copy              ; transfer single byte
+        ld hl, #1                       ; return with HL set appropriately
+        ret
 
         .area _COMMONMEM
 ;=========================================================================
@@ -115,8 +122,7 @@ rd_do_translate:
         ex de,hl                        ; reverse if necessary
 go:
         ldir                            ; do the copy
-        call map_kernel                 ; map back the kernel
-        ret
+        jp map_kernel                   ; map back the kernel
 
 ; variables
 _rd_cpy_count:
