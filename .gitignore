@@ -12,6 +12,7 @@ Applications/levee/levee-vt52
 Applications/ue/ue
 Applications/ue/ue.ansi
 Applications/ue/ue.fuzix
+Applications/flashrom/flashrom
 Library/**/*.asm
 Library/libs/*.lib
 Library/libs/fuzix/Makefile
