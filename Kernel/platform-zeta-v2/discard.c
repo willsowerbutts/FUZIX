@@ -31,7 +31,7 @@ void pagemap_init(void)
 	 * Page 35 is the common area
 	 * Pages starting from DEV_RD_START are used by RAM disk
 	 */
-	for (i = 32 + 4; i < DEV_RD_RAM_START; i++)
+	for (i = 32 + 4; i < (DEV_RD_RAM_START >> 14); i++)
 		pagemap_add(i);
 
 	/* finally add the common area */
