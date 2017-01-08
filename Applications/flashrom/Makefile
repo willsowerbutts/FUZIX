@@ -1,14 +1,20 @@
-FCC = ../../Library/tools/fcc
-FCCOPTS = -O2
-
 .SUFFIXES: .c .rel
 
-LIBS = ../../Library/libs/syslib.lib
+FCC = ../../Library/tools/fcc 
+FCCOPTS = -O2
+SRCS  = flashrom.c
+OBJS = $(SRCS:.c=.rel)
+APPS = $(OBJS:.rel=)
 
-all: flashrom
+all: $(APPS)
 
-flashrom:	flashrom.c
-	$(FCC) $(FCCOPTS) flashrom.c -o flashrom
+$(OBJS): %.rel: %.c
+
+.c.rel:
+	$(FCC) $(FCCOPTS) -c $<
+
+%: %.rel
+	$(FCC) $(FCCOPTS) $< -o $@
 
 clean:
-	rm -f flashrom core *~ *.asm *.lst *.sym *.map *.rst *.lk *.noi *.rel *.bin
+	rm -f $(OBJS) $(APPS) core *~ *.asm *.lst *.sym *.map *.noi *.lk *.ihx *.tmp *.bin size.report *~
