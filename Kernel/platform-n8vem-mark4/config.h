@@ -58,10 +58,13 @@
 /* Memory backed devices */
 #define CONFIG_DEV_MEM          /* enable /dev/mem driver */
 #define CONFIG_RAMDISK          /* enable memory-backed device driver */
-#define DEV_RD_ROM_SIZE  128    /* size of system ROM in 4KB pages (512KB) */
-#define DEV_RD_RAM_SIZE  128    /* size of system RAM in 4KB pages (512KB) */
-#define DEV_RD_ROM_PAGES 64     /* size of the ROM disk (/dev/rd1) in 4KB pages */
-#define DEV_RD_RAM_PAGES 0      /* size of the RAM disk (/dev/rd0) in 4KB pages */
+#define DEV_RD_ROM_PAGES 64     /* size of the ROM disk (/dev/rd0) in 4KB pages */
+#define DEV_RD_RAM_PAGES 0      /* size of the RAM disk (/dev/rd1) in 4KB pages */
+
+#define DEV_RD_ROM_START ((uint32_t)(128-DEV_RD_ROM_PAGES) << 12)
+#define DEV_RD_RAM_START ((uint32_t)(256-DEV_RD_RAM_PAGES) << 12)
+#define DEV_RD_ROM_SIZE  ((uint32_t)DEV_RD_ROM_PAGES << 12)
+#define DEV_RD_RAM_SIZE  ((uint32_t)DEV_RD_RAM_PAGES << 12)
 
 /* Optional PropIOv2 board on ECB bus */
 //#define CONFIG_PROPIO2		/* #define CONFIG_PROPIO2 to enable as tty3 */

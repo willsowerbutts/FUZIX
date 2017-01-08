@@ -4,7 +4,6 @@
 #include <devtty.h>
 #include "config.h"
 #include <z180.h>
-#include <devrd_z180.h>
 
 void init_hardware_c(void)
 {

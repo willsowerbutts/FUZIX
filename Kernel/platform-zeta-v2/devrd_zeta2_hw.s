@@ -1,30 +1,44 @@
         .module devrd_hw
 
-        ; imported symbols - from zeta-v2.s
+        ; imported symbols
         .globl map_kernel, mpgsel_cache, _kernel_pages
+        .globl _rd_platform_copy
 
-        ; imported symbol - from devrd.c
-        .globl _rd_transfer
-
-        ; exported symbols (used by devrd.c)
+        ; exported symbols
         .globl _rd_page_copy
-        .globl _rd_read
-        .globl _rd_write
-        .globl _rd_cpy_count, _rd_reverse
-        .globl _rd_dst_userspace, _rd_dst_address, _rd_src_address
+        .globl _rd_cpy_count
+        .globl _rd_reverse
+        .globl _rd_dst_userspace
+        .globl _rd_dst_address
+        .globl _rd_src_address
+        .globl _devmem_read
+        .globl _devmem_write
 
         .include "../kernel.def"
         .include "kernel.def"
 
         .area _CODE
-; kernel calls rd_read(), rd_write(), we just set a flag and then pass control to rd_transfer()
-_rd_write:
+_devmem_write:
         ld a, #1
-        jr _rd_go
-_rd_read:
+        ld (_rd_reverse), a             ; 1 = write
+        jr _devmem_go
+
+_devmem_read:
         xor a
-_rd_go: ld (_rd_reverse), a
-        jp _rd_transfer
+        ld (_rd_reverse), a             ; 0 = read
+        inc a
+_devmem_go:
+        ld (_rd_dst_userspace), a       ; 1 = userspace
+        ; load the other parameters
+        ld hl, (U_DATA__U_BASE)
+        ld (_rd_dst_address), hl
+        ld hl, (U_DATA__U_COUNT)
+        ld (_rd_cpy_count), hl
+        ld hl, (U_DATA__U_OFFSET)
+        ld (_rd_src_address), hl
+        ld hl, (U_DATA__U_OFFSET+2)
+        ld (_rd_src_address+2), hl
+        jp _rd_platform_copy
 
         .area _COMMONMEM
 ;=========================================================================

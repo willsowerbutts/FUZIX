@@ -59,11 +59,16 @@
 //#define CONFIG_PPP		/* #define CONFIG_PPP to enable as tty3 */
 
 /* Device parameters */
+#define CONFIG_DEV_MEM          /* enable /dev/mem driver */
+
 #define CONFIG_RAMDISK          /* enable memory-backed disk driver */
 #define DEV_RD_ROM_PAGES 28     /* size of the ROM disk in 16KB pages (max 32, any unused pages are at the start of the ROM) */
 #define DEV_RD_RAM_PAGES 0      /* size of the RAM disk in 16KB pages */
 
-#define CONFIG_DEV_PHYSMEM      /* /dev/physpmem -- userspace access to physical memory addresses */
+#define DEV_RD_ROM_START ((uint32_t)(32-DEV_RD_ROM_PAGES) << 14)        /* first byte used by the ROM disk */
+#define DEV_RD_RAM_START ((uint32_t)(64-DEV_RD_RAM_PAGES) << 14)        /* first byte used by the RAM disk */
+#define DEV_RD_ROM_SIZE  ((uint32_t)DEV_RD_ROM_PAGES << 14)             /* size of the ROM disk */
+#define DEV_RD_RAM_SIZE  ((uint32_t)DEV_RD_RAM_PAGES << 14)             /* size of the RAM disk */
 
 #ifdef CONFIG_PPP
 	/* SD card in ParPortProp */

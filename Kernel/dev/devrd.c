@@ -1,25 +1,25 @@
-/* Z180 (Mark IV SBC & P112) memory driver
+/* Zeta SBC V2  memory driver
  *
- *     minor 0: /dev/rd0   ROM disk block device
- *     minor 1: /dev/rd1   RAM disk block device
+ *     /dev/rd0      (block device)      RAM disk
+ *     /dev/rd1      (block device)      ROM disk 
  *
- * 2017-01-05 William R Sowerbutts, based on Zeta-v2 RAM disk code by Sergey Kiselev
+ * 2017-01-03 William R Sowerbutts, based on RAM disk code by Sergey Kiselev
  */
 
 #include <kernel.h>
 #include <kdata.h>
 #include <printf.h>
 #define DEVRD_PRIVATE
-#include "devrd_z180.h"
+#include "devrd.h"
 
 static const uint32_t dev_limit[NUM_DEV_RD] = {
-    (uint32_t)(DEV_RD_ROM_PAGES + DEV_RD_ROM_START) << 12, /* block /dev/rd0: ROM */
-    (uint32_t)(DEV_RD_RAM_PAGES + DEV_RD_RAM_START) << 12, /* block /dev/rd1: RAM */
+    DEV_RD_ROM_START+DEV_RD_ROM_SIZE, /* /dev/rd0: ROM */
+    DEV_RD_RAM_START+DEV_RD_RAM_SIZE, /* /dev/rd1: RAM */
 };
 
 static const uint32_t dev_start[NUM_DEV_RD] = {
-    (uint32_t)DEV_RD_ROM_START << 12,                      /* block /dev/rd0: ROM */
-    (uint32_t)DEV_RD_RAM_START << 12,                      /* block /dev/rd1: RAM */
+    DEV_RD_ROM_START, /* /dev/rd0: ROM */
+    DEV_RD_RAM_START, /* /dev/rd1: RAM */
 };
 
 int rd_transfer(uint8_t minor, uint8_t rawflag, uint8_t flag) /* implements both rd_read and rd_write */
@@ -58,7 +58,7 @@ int rd_transfer(uint8_t minor, uint8_t rawflag, uint8_t flag) /* implements both
         return -1;
     }
 
-    rd_page_copy();
+    rd_platform_copy();
 
     return rd_cpy_count >> 9;
 }
@@ -74,7 +74,9 @@ int rd_open(uint8_t minor, uint16_t flags)
 #if DEV_RD_ROM_PAGES > 0
         case RD_MINOR_ROM:
 #endif
+#if (DEV_RD_ROM_PAGES+DEV_RD_RAM_PAGES) > 0
             return 0;
+#endif
         default:
             udata.u_error = ENXIO;
             return -1;

@@ -8,7 +8,6 @@
 #ifdef CONFIG_P112_FLOPPY
 #include "devfd.h"
 #endif
-#include <devrd_z180.h>
 #include <devide.h>
 #include <ds1302.h>
 

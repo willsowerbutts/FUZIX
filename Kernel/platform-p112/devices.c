@@ -7,7 +7,7 @@
 #include <devide.h>
 #include <blkdev.h>
 #include <ds1302.h>
-#include <devrd_z180.h>
+#include <devrd.h>
 #ifdef CONFIG_P112_FLOPPY
 #include <devfd.h>
 #endif
