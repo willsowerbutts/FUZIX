@@ -15,6 +15,7 @@ make -C Library/libs install
 # applications for root filesystem
 make -C Applications/cave -j4
 make -C Applications/cpm -j4
+make -C Applications/flashrom -j4
 make -C Applications/games -j4
 make -C Applications/levee -j4
 make -C Applications/util -j4
