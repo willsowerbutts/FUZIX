@@ -17,6 +17,7 @@
 #include <unistd.h>
 
 #define FLASHROM_PHYSICAL_BASE   0  /* Location in the physical address space */
+#define SLOW_BUT_SAFE            0  /* Set to 1 for very fast systems */
 
 typedef enum { 
     ACTION_UNKNOWN, 
@@ -93,7 +94,7 @@ unsigned char flashrom_chip_read(unsigned long address)
     unsigned char buf;
     lseek(mem_fd, FLASHROM_PHYSICAL_BASE + address, SEEK_SET);
     if(read(mem_fd, &buf, 1) != 1)
-        printf("read from /dev/physmem failed: %s\n", strerror(errno));
+        printf("read from /dev/mem failed: %s\n", strerror(errno));
     return buf;
 }
 
@@ -101,14 +102,14 @@ void flashrom_chip_read_block(unsigned long address, void *buffer, int length)
 {
     lseek(mem_fd, FLASHROM_PHYSICAL_BASE + address, SEEK_SET);
     if(read(mem_fd, buffer, length) != length)
-        printf("read from /dev/physmem failed: %s\n", strerror(errno));
+        printf("read from /dev/mem failed: %s\n", strerror(errno));
 }
 
 void flashrom_chip_write(unsigned long address, unsigned char value)
 {
     lseek(mem_fd, FLASHROM_PHYSICAL_BASE + address, SEEK_SET);
     if(write(mem_fd, &value, 1) != 1)
-        printf("write to /dev/physmem failed: %s\n", strerror(errno));
+        printf("write to /dev/mem failed: %s\n", strerror(errno));
 }
 
 void abort_and_solicit_report(void)
@@ -144,7 +145,9 @@ void flashrom_chip_write_block(unsigned long address, unsigned int length)
     unsigned char magic1 = 0xAA;
     unsigned char magic2 = 0x55;
     unsigned char magic3 = 0xA0;
-    // unsigned char test;
+#if SLOW_BUT_SAFE
+    unsigned char test;
+#endif
 
     while(length--){
         if(*buffer != 0xFF){
@@ -167,12 +170,14 @@ void flashrom_chip_write_block(unsigned long address, unsigned int length)
             // * wait for programming to complete 
             // the data sheet advises you check this twice but this boat is so
             // slow there's not much point doing it at all!
-            // while(flashrom_chip_read(address) != *buffer);
-            // while(flashrom_chip_read(address) != *buffer);
-            // do{
-            //     lseek(mem_fd, FLASHROM_PHYSICAL_BASE + address, SEEK_SET);
-            //     read(mem_fd, &test, 1);
-            // }while(test != *buffer);
+#if SLOW_BUT_SAFE
+            while(flashrom_chip_read(address) != *buffer);
+            while(flashrom_chip_read(address) != *buffer);
+            do{
+                lseek(mem_fd, FLASHROM_PHYSICAL_BASE + address, SEEK_SET);
+                read(mem_fd, &test, 1);
+            }while(test != *buffer);
+#endif
         }
         buffer++;
         address++;
@@ -416,10 +421,10 @@ bool check_file_size(void)
 
 bool map_flashrom(void)
 {
-    mem_fd = open("/dev/physmem", O_RDWR); /* TODO FIXME should be /dev/physmem !! */
+    mem_fd = open("/dev/mem", O_RDWR);
 
     if(mem_fd < 0){
-        printf("Cannot open /dev/physmem: %s\n", strerror(errno));
+        printf("Cannot open /dev/mem: %s\n", strerror(errno));
         return false;
     }
 

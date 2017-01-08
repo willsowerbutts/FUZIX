@@ -56,6 +56,7 @@
 #define CONFIG_RTC_INTERVAL 30 /* deciseconds between reading RTC seconds counter */
 
 /* Memory backed devices */
+#define CONFIG_DEV_MEM          /* enable /dev/mem driver */
 #define CONFIG_RAMDISK          /* enable memory-backed device driver */
 #define DEV_RD_ROM_SIZE  128    /* size of system ROM in 4KB pages (512KB) */
 #define DEV_RD_RAM_SIZE  128    /* size of system RAM in 4KB pages (512KB) */

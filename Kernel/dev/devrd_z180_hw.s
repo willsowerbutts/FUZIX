@@ -7,12 +7,14 @@
         .globl map_kernel
         .globl _rd_transfer
 
-        ; exported symbols (used by devrd.c)
+        ; exported symbols (used by devrd.c, sysdev.c)
         .globl _rd_page_copy
         .globl _rd_read
         .globl _rd_write
         .globl _rd_cpy_count, _rd_reverse
         .globl _rd_dst_userspace, _rd_dst_address, _rd_src_address
+        .globl _devmem_read
+        .globl _devmem_write
 
         .include "kernel.def"
         .include "../kernel.def"
@@ -28,12 +30,38 @@ _rd_read:
 _rd_go: ld (_rd_reverse), a
         jp _rd_transfer
 
+_devmem_write:
+        ld a, #1
+        ld (_rd_reverse), a             ; 1 = write
+        jr _devmem_go
+
+_devmem_read:
+        xor a
+        ld (_rd_reverse), a             ; 0 = read
+        inc a
+_devmem_go:
+        ld (_rd_dst_userspace), a       ; 1 = userspace
+        ; load the other parameters
+        ld hl, (U_DATA__U_BASE)
+        ld (_rd_dst_address), hl
+        ld hl, (U_DATA__U_COUNT)
+        ld (_rd_cpy_count), hl
+        ld hl, (U_DATA__U_OFFSET)
+        ld (_rd_src_address), hl
+        ld hl, (U_DATA__U_OFFSET+2)
+        ld (_rd_src_address+2), hl
+        ; FALL THROUGH INTO _rd_page_copy
+
 ;=========================================================================
 ; _rd_page_copy - Copy data from one physical page to another
-; Call with interrupts disabled
 ; See notes in devrd.h for input parameters
 ;=========================================================================
 _rd_page_copy:
+        ; save interrupt flag on stack then disable interrupts
+        ld a, i
+        push af
+        di
+
         ; load source page number
         ld de, (_rd_src_address+1) ; and +2
         ld a,  (_rd_src_address+0)
@@ -87,8 +115,13 @@ topbits:
         ld bc, #0x0240
         out0 (DMA_DMODE), b     ; 0x02 - memory to memory, burst mode
         out0 (DMA_DSTAT), c     ; 0x40 - enable DMA channel 0
+        ; CPU stalls until DMA burst completes
 
-        ret
+        ; recover interrupt flag from stack and restore ints if required
+        pop af
+        ret po
+        ei
+        ret                     ; return with HL=_rd_cpy_count, as required by char device drivers
 
 ; variables
 _rd_cpy_count:
