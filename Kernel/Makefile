@@ -34,7 +34,7 @@ export TARGET = coco2cart
 #export TARGET = zx128
 
 export VERSION = "0.1"
-export SUBVERSION = "ac1"
+export SUBVERSION = $(shell git rev-parse --short=7 HEAD)
 export ROOT_DIR
 
 ifeq ($(MAKE),)
@@ -145,9 +145,6 @@ $(CSRCS): include/kernel.h
 
 include/kernel.h: include/sysinfoblk.h
 
-include/sysinfoblk.h: tools/makeversion
-	tools/makeversion $(VERSION) $(SUBVERSION) $(TARGET)
-
 $(C1OBJS): %$(BINEXT): %.c
 	$(CROSS_CC) $(CROSS_CCOPTS) $(CROSS_CC_SEG1) $<
 
@@ -184,7 +181,10 @@ $(CS5OBJS): %$(BINEXT): %.c
 $(AOBJS): %$(BINEXT): %$(ASMEXT)
 	$(CROSS_AS) $(ASOPTS) -o $*$(BINEXT) $<
 
-version.c: tools/makeversion
+include/sysinfoblk.h: tools/makeversion ../.git/refs/heads/master
+	tools/makeversion $(VERSION) $(SUBVERSION) $(TARGET)
+
+version.c: tools/makeversion ../.git/refs/heads/master
 	tools/makeversion $(VERSION) $(SUBVERSION) $(TARGET)
 
 tools/makeversion: tools/makeversion.c
