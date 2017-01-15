@@ -47,13 +47,16 @@ Standalone/distribution/
 Kernel/platform-n8vem-mark4/diskboot.bin
 Kernel/platform-n8vem-mark4/diskboot.ihx
 Kernel/platform-n8vem-mark4/fuzix.com
+Kernel/platform-n8vem-mark4/fuzix
 Kernel/platform-p112/flopboot.bin
 Kernel/platform-p112/flopboot.ihx
 Kernel/platform-p112/fuzix-boot.fdd
 Kernel/platform-p112/fuzix.com
+Kernel/platform-p112/fuzix
 Kernel/platform-zeta-v2/bootrom.bin
 Kernel/platform-zeta-v2/bootrom.ihx
 Kernel/platform-zeta-v2/diskboot.bin
 Kernel/platform-zeta-v2/diskboot.ihx
 Kernel/platform-zeta-v2/fuzix.com
 Kernel/platform-zeta-v2/fuzix.rom
+Kernel/platform-zeta-v2/fuzix
