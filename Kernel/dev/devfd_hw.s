@@ -586,20 +586,29 @@ FdcXit:
 
 ; inner section of FdCmd routine, has to touch buffers etc
 FdCmdXfer:
-        BIT     0,D             ; Buffer in user memory?
+        BIT     0,D             ; buffer is in user memory?
+        PUSH    AF              ; save flags with test result
         CALL    NZ, map_process_always
-
-FdCi1:  CALL    WRdy
-        BIT     5,A             ; In Execution Phase?
+        CALL    WRdy
+        LD      B,A             ; stash copy of result in B
+        LD      A, #0xA2        ; load second half of INI opcode
+        BIT     6,B             ; are we performing a write?
+        JR      NZ,FdUpdate     ; if not, skip increment of instruction code
+        INC     A               ; now A=0xA3; second half of OUTI opcode
+FdUpdate:
+        LD      (FdIOP+1), A    ; modify code to INI or OUTI instruction as required
+        LD      A,B             ; recover WRdy result
+        LD      DE, #FdXferLoop ; load address of loop start
+FdXferLoop:
+        AND     #0x20           ; are we in the Execution Phase? (1 cycle faster than BIT 5,A but destroys A)
         JR      Z,FdCmdXferDone ; ... tidy up and return if not
-        BIT     6,A             ; Write?
-        JR      NZ,FdCi2        ; ... jump if Not to Read
-        OUTI                    ; Write a Byte from (HL) to (C)
-        JR      FdCi1           ; check for next byte
-FdCi2:  INI                     ; Read a byte from (C) to (HL)
-        JR      FdCi1           ; check for next byte
+        ; this next instruction gets modified at runtime
+        ; opcodes for INI is ED A2, opcode for OUTI is ED A3
+FdIOP:  INI                     ; transfer one byte between (C) and (HL)
+        PUSH    DE              ; push return address for WRdy
+        JR      WRdy            ; call it (returns to FdXferLoop)
 FdCmdXferDone:
-        BIT     0,D             ; Buffer in user memory?
+        POP     AF              ; recover saved copy of flags (buffer was in user memory?)
         RET     Z               ; done if not
         JP      map_kernel      ; else remap kernel and return
 
