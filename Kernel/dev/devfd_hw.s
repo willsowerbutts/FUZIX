@@ -586,29 +586,36 @@ FdcXit:
 
 ; inner section of FdCmd routine, has to touch buffers etc
 FdCmdXfer:
-        BIT     0,D             ; buffer is in user memory?
-        PUSH    AF              ; save flags with test result
+        BIT     0,D             ; Buffer in user memory?
+        PUSH    AF
         CALL    NZ, map_process_always
+
+        ; On our first WRdy check, decide if we are going
+        ; to read or to write.
         CALL    WRdy
-        LD      B,A             ; stash copy of result in B
-        LD      A, #0xA2        ; load second half of INI opcode
-        BIT     6,B             ; are we performing a write?
-        JR      NZ,FdUpdate     ; if not, skip increment of instruction code
-        INC     A               ; now A=0xA3; second half of OUTI opcode
-FdUpdate:
-        LD      (FdIOP+1), A    ; modify code to INI or OUTI instruction as required
-        LD      A,B             ; recover WRdy result
-        LD      DE, #FdXferLoop ; load address of loop start
-FdXferLoop:
-        AND     #0x20           ; are we in the Execution Phase? (1 cycle faster than BIT 5,A but destroys A)
+        BIT     6,A             ; Write?
+        JR      Z,FdCiW0        ; ... if so, jump to Write
+        ; if not, fall through into Read routine
+
+; read loop
+FdCiR0: LD      DE, #FdCiR1
+FdCiR1: AND     #0x20           ; are we in the Execution Phase? (1 cycle faster than BIT 5,A but destroys A)
         JR      Z,FdCmdXferDone ; ... tidy up and return if not
-        ; this next instruction gets modified at runtime
-        ; opcodes for INI is ED A2, opcode for OUTI is ED A3
-FdIOP:  INI                     ; transfer one byte between (C) and (HL)
-        PUSH    DE              ; push return address for WRdy
-        JR      WRdy            ; call it (returns to FdXferLoop)
+        INI                     ; Read a byte from (C) to (HL)
+        PUSH    DE              ; put return address on stack
+        JR      WRdy            ; check for next byte
+
+; write loop
+FdCiW0: LD      DE, #FdCiW1
+FdCiW1: AND     #0x20           ; are we in the Execution Phase? (1 cycle faster than BIT 5,A but destroys A)
+        JR      Z,FdCmdXferDone ; ... tidy up and return if not
+        OUTI                    ; Write a Byte from (HL) to (C)
+        PUSH    DE              ; put return address on stack
+        JR      WRdy            ; check for next byte
+
+; tidy up and return
 FdCmdXferDone:
-        POP     AF              ; recover saved copy of flags (buffer was in user memory?)
+        POP     AF              ; Recover flags -- Buffer in user memory?
         RET     Z               ; done if not
         JP      map_kernel      ; else remap kernel and return
 
