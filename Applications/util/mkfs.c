@@ -113,18 +113,31 @@ void mkfs(uint16_t fsize, uint16_t isize)
     uint16_t j;
     char *zeros;
 
-    /* Zero out the blocks */
-    printf("Zeroizing i-blocks...\n");
     zeros = zerobuf();		/* Get a zero filled buffer */
 
+    /* Zero out the blocks */
+    printf("Zeroing inode blocks ");
+
+    for (j = 0; j < isize; ++j){
+        dwrite(j, zeros);
+        if(!(j % 32)){
+            putchar('.');
+            fflush(stdout);
+        }
+    }
+    putchar('\n');
+
     if( !fast ){
-	    for (j = 0; j < fsize; ++j)
-		    dwrite(j, zeros);
+        printf("Zeroing data blocks ");
+        for (;j < fsize; ++j){
+            dwrite(j, zeros);
+            if(!(j % 32)){
+                putchar('.');
+                fflush(stdout);
+            }
+        }
     }
-    else{
-	    for (j = 0; j < isize; ++j)
-		    dwrite(j, zeros);
-    }
+    putchar('\n');
 
     /* Initialize the super-block */
     fs_tab.s_mounted = SMOUNTED;	/* Magic number */
