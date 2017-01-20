@@ -124,7 +124,7 @@ NoDrv:  LD      HL,#0xFFFF      ; Set Error Status
         RET
 
 ;-------------------------------------------------------------
-; This routine Reads/Writes data from buffer trying up to 4 times
+; This routine Reads/Writes data from buffer trying up to 8 times
 ; before giving up.  If an error occurs after the next-to-last
 ; try, the heads are homed to force a re-seek.
 ;
@@ -153,7 +153,7 @@ _devfd_write:
 ;;--    LD      HL,buffer       ;  Point to the host buffer
 ;;--    LD      (actDma),HL     ;   and set Memory Pointer
 
-        LD      A,#4            ; Get the maximum retry count
+        LD      A,#8            ; Get the maximum retry count
 Rwf1:   LD      (rwRtry),A
         LD      D,#0xFF         ;  (Verify needed)
         CALL    SEEK            ; Try to seek to the desired track
@@ -186,6 +186,8 @@ SWrite: OR      #0x40           ;  Set MFM Mode Bit
         POP     BC              ; Restore Regs
         LD      (_devfd_error),A        ;  (store Error bits)
         JR      Z,FhdrX         ; ..jump to return if No Errors
+                .globl outcharhex
+                CALL outcharhex
 
 Rwf2:   LD      A,(rwRtry)      ; Get retry count
         CP      #2              ; Are we on Next to last try?
@@ -603,7 +605,7 @@ FdCiR1: AND     #0x20           ; are we in the Execution Phase? (1 cycle faster
         JR      Z,FdCmdXferDone ; ... tidy up and return if not
         INI                     ; Read a byte from (C) to (HL)
         PUSH    DE              ; put return address on stack
-        JR      WRdy            ; check for next byte
+        JR      WRdyL           ; check for next byte
 
 ; write loop
 FdCiW0: LD      DE, #FdCiW1
@@ -611,7 +613,7 @@ FdCiW1: AND     #0x20           ; are we in the Execution Phase? (1 cycle faster
         JR      Z,FdCmdXferDone ; ... tidy up and return if not
         OUTI                    ; Write a Byte from (HL) to (C)
         PUSH    DE              ; put return address on stack
-        JR      WRdy            ; check for next byte
+        JR      WRdyL           ; check for next byte
 
 ; tidy up and return
 FdCmdXferDone:
