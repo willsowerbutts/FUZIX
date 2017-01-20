@@ -226,13 +226,6 @@ _program_vectors:
 	jr map_kernel
 
 ;=========================================================================
-; Memory management
-; - kernel pages:     32 - 34
-; - common page:      35
-; - user space pages: 36 - 63
-;=========================================================================
-
-;=========================================================================
 ; map_process_always - map process pages
 ; Inputs: page table address in #U_DATA__U_PAGE
 ; Outputs: none; all registers preserved
