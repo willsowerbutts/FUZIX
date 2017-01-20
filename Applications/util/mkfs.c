@@ -118,6 +118,7 @@ void mkfs(uint16_t fsize, uint16_t isize)
 
     /* Zero out the blocks */
     printf("Zeroing inode blocks");
+    fflush(stdout);
 
     ticks = fsize / 55;
 
@@ -130,8 +131,9 @@ void mkfs(uint16_t fsize, uint16_t isize)
     }
     putchar('\n');
 
-    if( !fast ){
+    if( fast ){
         printf("Zeroing data blocks");
+        fflush(stdout);
         for (;j < fsize; ++j){
             dwrite(j, zeros);
             if(!(j % ticks)){
@@ -139,8 +141,8 @@ void mkfs(uint16_t fsize, uint16_t isize)
                 fflush(stdout);
             }
         }
+        putchar('\n');
     }
-    putchar('\n');
 
     /* Initialize the super-block */
     fs_tab.s_mounted = SMOUNTED;	/* Magic number */
