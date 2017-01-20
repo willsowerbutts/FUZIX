@@ -263,16 +263,16 @@ map_kernel:
 map_process_2:
         push af
         ld a, (hl)
-        out (MPGSEL_0), a
         ld (mpgsel_cache+0), a
+        out (MPGSEL_0), a
         inc hl
         ld a, (hl)
-        out (MPGSEL_1), a
         ld (mpgsel_cache+1), a
+        out (MPGSEL_1), a
         inc hl
         ld a, (hl)
-        out (MPGSEL_2), a
         ld (mpgsel_cache+2), a
+        out (MPGSEL_2), a
         pop af
         ret
 
