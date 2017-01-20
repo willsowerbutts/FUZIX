@@ -593,27 +593,23 @@ FdCmdXfer:
         CALL    NZ, map_process_always
 
         ; On our first WRdy check, decide if we are going
-        ; to read or to write.
+        ; to transfer any data, and if it is read or write.
         CALL    WRdy
+        BIT     5,A             ; in execution phase?
+        JR      Z,FdCmdXferDone ; skip transfer loop if not
         BIT     6,A             ; Write?
-        JR      Z,FdCiW0        ; ... if so, jump to Write
-        ; if not, fall through into Read routine
+        LD      A,#0xA2         ; Load second byte of INI opcode (doesn't update flags)
+        JR      NZ,FdCiUpd      ; ... if read, skip increment
+        INC     A               ; ... if write, A=0xA3, second byte of OUTI opcode
+FdCiUpd:LD      (FdCiR1+1),A    ; update second byte of INI/OUTI instruction
 
-; read loop
-FdCiR0: LD      DE, #FdCiR1
-FdCiR1: AND     #0x20           ; are we in the Execution Phase? (1 cycle faster than BIT 5,A but destroys A)
-        JR      Z,FdCmdXferDone ; ... tidy up and return if not
-        INI                     ; Read a byte from (C) to (HL)
-        PUSH    DE              ; put return address on stack
-        JR      WRdyL           ; check for next byte
-
-; write loop
-FdCiW0: LD      DE, #FdCiW1
-FdCiW1: AND     #0x20           ; are we in the Execution Phase? (1 cycle faster than BIT 5,A but destroys A)
-        JR      Z,FdCmdXferDone ; ... tidy up and return if not
-        OUTI                    ; Write a Byte from (HL) to (C)
-        PUSH    DE              ; put return address on stack
-        JR      WRdyL           ; check for next byte
+; transfer loop
+FdCiR1: INI                     ; This instruction gets modified in place to INI/OUTI, as required
+FdCiR2: IN      A,(FDC_MSR)     ; Read Main Status Register
+        BIT     7,A
+        JR      Z, FdCiR2       ; loop until interrupt requested
+        AND     #0x20           ; are we still in the Execution Phase? (1 cycle faster than BIT 5,A but destroys A)
+        JR      NZ, FdCiR1      ; if so, next byte!
 
 ; tidy up and return
 FdCmdXferDone:
