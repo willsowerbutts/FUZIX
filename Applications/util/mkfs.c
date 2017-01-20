@@ -111,16 +111,19 @@ int yes(void)
 void mkfs(uint16_t fsize, uint16_t isize)
 {
     uint16_t j;
+    uint16_t ticks;
     char *zeros;
 
     zeros = zerobuf();		/* Get a zero filled buffer */
 
     /* Zero out the blocks */
-    printf("Zeroing inode blocks ");
+    printf("Zeroing inode blocks");
+
+    ticks = fsize / 55;
 
     for (j = 0; j < isize; ++j){
         dwrite(j, zeros);
-        if(!(j % 32)){
+        if(!(j % ticks)){
             putchar('.');
             fflush(stdout);
         }
@@ -128,10 +131,10 @@ void mkfs(uint16_t fsize, uint16_t isize)
     putchar('\n');
 
     if( !fast ){
-        printf("Zeroing data blocks ");
+        printf("Zeroing data blocks");
         for (;j < fsize; ++j){
             dwrite(j, zeros);
-            if(!(j % 32)){
+            if(!(j % ticks)){
                 putchar('.');
                 fflush(stdout);
             }
