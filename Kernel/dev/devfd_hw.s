@@ -124,7 +124,7 @@ NoDrv:  LD      HL,#0xFFFF      ; Set Error Status
         RET
 
 ;-------------------------------------------------------------
-; This routine Reads/Writes data from buffer trying up to 8 times
+; This routine Reads/Writes data from buffer trying up to 15 times
 ; before giving up.  If an error occurs after the next-to-last
 ; try, the heads are homed to force a re-seek.
 ;
@@ -153,7 +153,7 @@ _devfd_write:
 ;;--    LD      HL,buffer       ;  Point to the host buffer
 ;;--    LD      (actDma),HL     ;   and set Memory Pointer
 
-        LD      A,#8            ; Get the maximum retry count
+        LD      A,#15           ; Get the maximum retry count
 Rwf1:   LD      (rwRtry),A
         LD      D,#0xFF         ;  (Verify needed)
         CALL    SEEK            ; Try to seek to the desired track
@@ -186,8 +186,6 @@ SWrite: OR      #0x40           ;  Set MFM Mode Bit
         POP     BC              ; Restore Regs
         LD      (_devfd_error),A        ;  (store Error bits)
         JR      Z,FhdrX         ; ..jump to return if No Errors
-                .globl outcharhex
-                CALL outcharhex
 
 Rwf2:   LD      A,(rwRtry)      ; Get retry count
         CP      #2              ; Are we on Next to last try?
@@ -589,7 +587,6 @@ FdcXit:
 ; inner section of FdCmd routine, has to touch buffers etc
 FdCmdXfer:
         BIT     0,D             ; Buffer in user memory?
-        PUSH    AF
         CALL    NZ, map_process_always
 
         ; On our first WRdy check, decide if we are going
@@ -613,7 +610,7 @@ FdCiR2: IN      A,(FDC_MSR)     ; Read Main Status Register
 
 ; tidy up and return
 FdCmdXferDone:
-        POP     AF              ; Recover flags -- Buffer in user memory?
+        BIT     0,D             ; Buffer in user memory?
         RET     Z               ; done if not
         JP      map_kernel      ; else remap kernel and return
 
