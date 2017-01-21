@@ -3,6 +3,7 @@
 ;       Copyright (C) 1998 by Harold F. Bower
 ;:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 ; 2015-01-17 Will Sowerbutts: Ported to sdas/Fuzix from UZI-180
+; 2017-01-21 Will Sowerbutts: Improvements for reliable operation at 6MHz
 
         .module devfd_hw
 
@@ -186,6 +187,14 @@ SWrite: OR      #0x40           ;  Set MFM Mode Bit
         POP     BC              ; Restore Regs
         LD      (_devfd_error),A        ;  (store Error bits)
         JR      Z,FhdrX         ; ..jump to return if No Errors
+
+        ;; ; DEBUG - report error code
+        ;; .globl outchar
+        ;; .globl outcharhex
+        ;; call outcharhex
+        ;; LD A, #'!'
+        ;; call outchar
+        ;; ; DEBUG - report error code
 
 Rwf2:   LD      A,(rwRtry)      ; Get retry count
         CP      #2              ; Are we on Next to last try?
@@ -551,17 +560,34 @@ FdCmd:  PUSH    HL              ; Save regs (for Exit)
         PUSH    BC
         PUSH    DE
 
-        PUSH    HL              ; save pointer for possible Transfer
-        CALL    Motor           ; Ensure motors are On
-        LD      HL,#comnd       ; Point to Command Block
-        LD      (HL),C          ;  command passed in C
-        LD      C,#FDC_DATA     ;   FDC Data Port
+        ; rewrite FdCmdXfer code so data flows in the correct direction
+        LD      A,(rdOp)
+        OR      A
+        LD      A,#0xA2         ; Load second byte of INI opcode (doesn't update flags)
+        JR      NZ,FdCiUpd      ; ... if read, skip increment
+        INC     A               ; ... if write, A=0xA3, second byte of OUTI opcode
+FdCiUpd:LD      (FdCiR1+1),A    ; update second byte of INI/OUTI instruction
+
+;;         ; will the command result in a data transfer?
+;;         LD      A,C             ; examine command code
+;;         AND     #0x1F           ; mask off option bits
+;;         CP      #0x05           ; write command?
+;;         JR      Z,YesTransfer
+;;         CP      #0x06
+;;         JR      NZ,NoTransfer
+;; YesTransfer:
+;;         LD      A,#0xFF
+;;         .DB     0x11            ; LD DE,** instruction -- LD A,#0 is the data loaded
+;; NoTransfer:
+;;         LD      A,#0            ; has to be two bytes -- do not optimise to XOR A
+;;         LD      E,A             ; store transfer flag (0/0xFF) in E
+
+        ; is the buffer in user memory?
         LD      A,(_devfd_userbuf)
         LD      D,A             ; store userbuf flag in D
-OtLoop: CALL    WRdy            ; Wait for RQM (hoping DIO is Low) (No Ints)
-        OUTI                    ; Output Command bytes to FDC
-        JR      NZ,OtLoop       ; ..loop til all bytes sent
-        POP     HL              ; Restore Possible Transfer Addr
+
+        ; prepare the drive
+        CALL    Motor           ; Ensure motors are On
 
         CALL    FdCmdXfer       ; Do the data transfer (using code in _COMMONMEM)
 
@@ -589,23 +615,28 @@ FdCmdXfer:
         BIT     0,D             ; Buffer in user memory?
         CALL    NZ, map_process_always
 
-        ; On our first WRdy check, decide if we are going
-        ; to transfer any data, and if it is read or write.
-        CALL    WRdy
-        BIT     5,A             ; in execution phase?
-        JR      Z,FdCmdXferDone ; skip transfer loop if not
-        BIT     6,A             ; Write?
-        LD      A,#0xA2         ; Load second byte of INI opcode (doesn't update flags)
-        JR      NZ,FdCiUpd      ; ... if read, skip increment
-        INC     A               ; ... if write, A=0xA3, second byte of OUTI opcode
-FdCiUpd:LD      (FdCiR1+1),A    ; update second byte of INI/OUTI instruction
+        ; send the command (length is in B, command is in C)
+        PUSH    HL              ; save pointer for possible Transfer
+        LD      HL,#comnd       ; Point to Command Block
+        LD      (HL),C          ;  command passed in C
+        LD      C,#FDC_DATA     ;   FDC Data Port
+OtLoop: CALL    WRdy            ; Wait for RQM (hoping DIO is Low) (No Ints)
+        OUTI                    ; Output Command bytes to FDC
+        JR      NZ,OtLoop       ; ..loop til all bytes sent
+        POP     HL              ; Restore Possible Transfer Addr
+
+        ; LD      A,E             ; Data transfer required?
+        ; OR      A               ; test value
+        ; JR      NZ, FdCiR2      ; yes - start sampling MSR
+        ; JR      FdCmdXferDone   ; no - skip transfer loop
+        JR      FdCiR2          ; start sampling MSR
 
 ; transfer loop
 FdCiR1: INI                     ; This instruction gets modified in place to INI/OUTI, as required
 FdCiR2: IN      A,(FDC_MSR)     ; Read Main Status Register
         BIT     7,A
         JR      Z, FdCiR2       ; loop until interrupt requested
-        AND     #0x20           ; are we still in the Execution Phase? (1 cycle faster than BIT 5,A but destroys A)
+FdCiR3: AND     #0x20           ; are we still in the Execution Phase? (1 cycle faster than BIT 5,A but destroys A)
         JR      NZ, FdCiR1      ; if so, next byte!
 
 ; tidy up and return
@@ -631,6 +662,17 @@ WRdyL:  IN      A,(FDC_MSR)     ; Read Main Status Register
 
 dlyCnt: .db     (CPU_CLOCK_KHZ/1000)    ; Delay to avoid over-sampling status register
 
+; FDC command staging area
+comnd:  .ds     1               ; Storage for Command in execution
+hdr:    .ds     1               ; Head (B2), Drive (B0,1)
+trk:    .ds     1               ; Track (t)
+hd:     .ds     1               ; Head # (h)
+sect:   .ds     1               ; Physical Sector Number
+rsz:    .ds     1               ; Bytes/Sector (n)
+eot:    .ds     1               ; End-of-Track Sect #
+gpl:    .ds     1               ; Gap Length
+dtl:    .ds     1               ; Data Length
+
 ;------------------------------------------------------------
 ; DATA MEMORY
 ;------------------------------------------------------------
@@ -646,16 +688,6 @@ _devfd_buffer:  .ds     2
 _devfd_userbuf: .ds     1
 
 ; DISK Subsystem Variable Storage
-comnd:  .ds     1               ; Storage for Command in execution
-hdr:    .ds     1               ; Head (B2), Drive (B0,1)
-trk:    .ds     1               ; Track (t)
-hd:     .ds     1               ; Head # (h)
-sect:   .ds     1               ; Physical Sector Number
-rsz:    .ds     1               ; Bytes/Sector (n)
-eot:    .ds     1               ; End-of-Track Sect #
-gpl:    .ds     1               ; Gap Length
-dtl:    .ds     1               ; Data Length
-
 ; FDC Operation Result Storage Area
 st0:    .ds     1               ; Status Byte 0
 st1:    .ds     1               ; Status Byte 1 (can also be PCN)
@@ -666,8 +698,8 @@ st1:    .ds     1               ; Status Byte 1 (can also be PCN)
         .ds     1               ; RN - Sector Size
 
 ; -->>> NOTE: Do NOT move these next two variables out of sequence !!! <<<--
-motim:  .ds     1               ; Motor On Time Counter
-mtm:    .ds     1               ; Floppy Spinup Time down-counter
+motim:  .ds     1               ; Motor On Time Counter                <<<--
+mtm:    .ds     1               ; Floppy Spinup Time down-counter      <<<--
 
 rdOp:   .ds     1               ; Read/write flag
 retrys: .ds     1               ; Number of times to try Opns
