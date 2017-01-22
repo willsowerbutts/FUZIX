@@ -571,20 +571,6 @@ FdCmd:  PUSH    HL              ; Save regs (for Exit)
         INC     A               ; ... if write, A=0xA3, second byte of OUTI opcode
 FdCiUpd:LD      (FdCiR1+1),A    ; update second byte of INI/OUTI instruction
 
-;;         ; will the command result in a data transfer?
-;;         LD      A,C             ; examine command code
-;;         AND     #0x1F           ; mask off option bits
-;;         CP      #0x05           ; write command?
-;;         JR      Z,YesTransfer
-;;         CP      #0x06
-;;         JR      NZ,NoTransfer
-;; YesTransfer:
-;;         LD      A,#0xFF
-;;         .DB     0x11            ; LD DE,** instruction -- LD A,#0 is the data loaded
-;; NoTransfer:
-;;         LD      A,#0            ; has to be two bytes -- do not optimise to XOR A
-;;         LD      E,A             ; store transfer flag (0/0xFF) in E
-
         ; is the buffer in user memory?
         LD      A,(_devfd_userbuf)
         LD      D,A             ; store userbuf flag in D
@@ -627,15 +613,12 @@ OtLoop: CALL    WRdy            ; Wait for RQM (hoping DIO is Low) (No Ints)
         OUTI                    ; Output Command bytes to FDC
         JR      NZ,OtLoop       ; ..loop til all bytes sent
         POP     HL              ; Restore Possible Transfer Addr
-
-        ; LD      A,E             ; Data transfer required?
-        ; OR      A               ; test value
-        ; JR      NZ, FdCiR2      ; yes - start sampling MSR
-        ; JR      FdCmdXferDone   ; no - skip transfer loop
         JR      FdCiR2          ; start sampling MSR
 
 ; transfer loop
-FdCiR1: INI                     ; This instruction gets modified in place to INI/OUTI, as required
+FdCiR1: INI                     ; *** THIS INSTRUCTION IS MODIFIED IN PLACE to INI/OUTI
+        ; INI  = ED A2
+        ; OUTI = ED A3
 FdCiR2: IN      A,(FDC_MSR)     ; Read Main Status Register
         BIT     7,A
         JR      Z, FdCiR2       ; loop until interrupt requested
