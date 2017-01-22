@@ -91,6 +91,9 @@ _devfd_init:
         LD      (motim),A       ; Mark Motors as initially OFF
         LD      (hd),A          ;  and initially Head #0
 
+        LD A, #0x20             ; increase delay time for init -- without this
+        LD (dlyCnt),A
+
         POP     HL              ; Return Addr
         POP     BC              ;  minor (in C)
         PUSH    BC              ;   Keep on Stack for Exit
