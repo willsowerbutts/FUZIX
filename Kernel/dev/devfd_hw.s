@@ -91,7 +91,7 @@ _devfd_init:
         LD      (motim),A       ; Mark Motors as initially OFF
         LD      (hd),A          ;  and initially Head #0
 
-        LD A, #0x20             ; increase delay time for init -- without this
+        LD A, #0x20             ; increase delay time for init
         LD (dlyCnt),A
 
         POP     HL              ; Return Addr
@@ -150,12 +150,8 @@ _devfd_write:
         PUSH    HL
         LD      A,C
         LD      (drive),A       ; Save Desired Device
-;;      CP      4               ; Legal?
-;;      JR      NC,NoDrv        ; ..Exit if Error
 
         CALL    Setup           ; Set up subsystem
-;;--    LD      HL,buffer       ;  Point to the host buffer
-;;--    LD      (actDma),HL     ;   and set Memory Pointer
 
         LD      A,#15           ; Get the maximum retry count
 Rwf1:   LD      (rwRtry),A
@@ -178,8 +174,7 @@ SWrite: OR      #0x40           ;  Set MFM Mode Bit
         LD      A,(sect)        ; Get Desired Sector #
         LD      (eot),A         ;  make last to Read only one Sector
 
-;;--    LD      HL,(actDma)     ; Get actual DMA Addr
-        ld      hl,(_devfd_buffer)      ;;--
+        ld      hl,(_devfd_buffer)
         CALL    FdCmd           ; Execute Read/Write
 
         POP     AF              ; Restore Last Sctr #
@@ -190,14 +185,6 @@ SWrite: OR      #0x40           ;  Set MFM Mode Bit
         POP     BC              ; Restore Regs
         LD      (_devfd_error),A        ;  (store Error bits)
         JR      Z,FhdrX         ; ..jump to return if No Errors
-
-        ;; ; DEBUG - report error code
-        ;; .globl outchar
-        ;; .globl outcharhex
-        ;; call outcharhex
-        ;; LD A, #'!'
-        ;; call outchar
-        ;; ; DEBUG - report error code
 
 Rwf2:   LD      A,(rwRtry)      ; Get retry count
         CP      #2              ; Are we on Next to last try?
