@@ -32,6 +32,8 @@
 
 static void addg(const char *as1, char *as2, const char *as3);
 
+/* workaround apparent sdcc bug */
+static void workaround(char *whatever) {}
 
 int expand(char *as, int rflg)
 {
@@ -74,6 +76,8 @@ int expand(char *as, int rflg)
 			}
 		}
 	}
+
+        workaround(s);
 
 	for (;;) {
 		if (cs == s) {
