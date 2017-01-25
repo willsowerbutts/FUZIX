@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# stop on errors
+set -e
+
 # /opt/fcc should be writable by the current user
 # /opt/fcc/bin should be in $PATH (or symlink fcc, binman from here into /usr/local/bin)
 
@@ -38,6 +41,3 @@ make -C Kernel TARGET=zeta-v2 all -j4
 
 make -C Kernel TARGET=p112 clean
 make -C Kernel TARGET=p112 all -j4
-
-# finally clean up, cleaning some platform we don't care for
-make -C Kernel TARGET=coco2 clean
