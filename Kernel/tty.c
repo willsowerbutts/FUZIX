@@ -243,7 +243,7 @@ int tty_ioctl(uint8_t minor, uarg_t request, char *data)
 {				/* Data in User Space */
         struct tty *t;
 
-	if (minor > NUM_DEV_TTY + 1) {
+	if (minor > NUM_DEV_TTY) {
 		udata.u_error = ENODEV;
 		return -1;
 	}
