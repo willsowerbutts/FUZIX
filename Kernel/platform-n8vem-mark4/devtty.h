@@ -7,4 +7,8 @@ void tty_pollirq_asci1(void);
 #ifdef CONFIG_PROPIO2
 void tty_poll_propio2(void);
 #endif
+#ifdef CONFIG_ECB_USB_FIFO_TTY
+void tty_pollirq_usb_fifo(void);
+#endif
+
 #endif

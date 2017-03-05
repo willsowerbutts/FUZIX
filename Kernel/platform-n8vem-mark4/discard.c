@@ -7,6 +7,9 @@
 #include <devide.h>
 #include <devsd.h>
 #include <ds1302.h>
+#ifdef CONFIG_ECB_USB_FIFO_TTY
+#include "devusbfifo.h"
+#endif
 
 void init_hardware_c(void)
 {
@@ -42,9 +45,20 @@ uint8_t platform_param(char *p)
     return 0;
 }
 
+#ifdef CONFIG_ECB_USB_FIFO_TTY
+void usb_fifo_tty_init(void)
+{
+    /* generate an interrupt only when the receiver contains data */
+    USB_FIFO_STATUS = USB_FIFO_STATUS_INT_ENABLE | USB_FIFO_STATUS_INT_RXF;
+}
+#endif
+
 void device_init(void)
 {
     devide_init();
     devsd_init();
     ds1302_init();
+#ifdef CONFIG_ECB_USB_FIFO_TTY
+    usb_fifo_tty_init();
+#endif
 }

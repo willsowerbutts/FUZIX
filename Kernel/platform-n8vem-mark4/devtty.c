@@ -6,18 +6,28 @@
 #include <devtty.h>
 #include <z180.h>
 #include <n8vem.h>
+#ifdef CONFIG_ECB_USB_FIFO_TTY
+#include <devusbfifo.h>
+#endif
 
-char tbuf1[TTYSIZ];
-char tbuf2[TTYSIZ];
+static char tbuf1[TTYSIZ];
+static char tbuf2[TTYSIZ];
+
+#ifdef CONFIG_ECB_USB_FIFO_TTY
+static char tbufu[TTYSIZ];
+#endif
 
 #ifdef CONFIG_PROPIO2
-char tbufp[TTYSIZ];
+static char tbufp[TTYSIZ];
 #endif
 
 struct  s_queue  ttyinq[NUM_DEV_TTY+1] = {       /* ttyinq[0] is never used */
     {   NULL,    NULL,    NULL,    0,        0,       0    },
     {   tbuf1,   tbuf1,   tbuf1,   TTYSIZ,   0,   TTYSIZ/2 },
     {   tbuf2,   tbuf2,   tbuf2,   TTYSIZ,   0,   TTYSIZ/2 },
+#ifdef CONFIG_ECB_USB_FIFO_TTY
+    {   tbufu,   tbufu,   tbufu,   TTYSIZ,   0,   TTYSIZ/2 },
+#endif
 #ifdef CONFIG_PROPIO2
     {   tbufp,   tbufp,   tbufp,   TTYSIZ,   0,   TTYSIZ/2 },
 #endif
@@ -55,6 +65,14 @@ void tty_poll_propio2(void)
 }
 #endif
 
+#ifdef CONFIG_ECB_USB_FIFO_TTY
+void tty_pollirq_usb_fifo(void)
+{
+    while(!(USB_FIFO_STATUS & USB_FIFO_STATUS_RXE))
+        tty_inproc(3, USB_FIFO_DATA);
+}
+#endif
+
 void tty_putc(uint8_t minor, unsigned char c)
 {
     switch(minor){
@@ -66,6 +84,13 @@ void tty_putc(uint8_t minor, unsigned char c)
             while(!(ASCI_STAT1 & 2));
             ASCI_TDR1 = c;
             break;
+/* WRS - TODO - sort out the device numbering here when both USB-FIFO and PropIO are configured! */
+#ifdef CONFIG_ECB_USB_FIFO_TTY
+        case 3:
+            while(USB_FIFO_STATUS & USB_FIFO_STATUS_TXF);
+            USB_FIFO_DATA = c;
+            break;
+#endif
 #ifdef CONFIG_PROPIO2
         case 3:
             while(!(PROPIO2_STAT & 0x10));

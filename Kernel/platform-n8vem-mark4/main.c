@@ -50,6 +50,9 @@ void platform_idle(void)
 void platform_interrupt(void)
 {
     switch(irqvector){
+        case Z180_INT0:
+            tty_pollirq_usb_fifo();
+            return;
         case Z180_INT_TIMER0:
             z180_timer_interrupt(); 
             return;

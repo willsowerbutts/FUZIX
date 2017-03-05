@@ -66,19 +66,29 @@
 #define DEV_RD_ROM_SIZE  ((uint32_t)DEV_RD_ROM_PAGES << 12)
 #define DEV_RD_RAM_SIZE  ((uint32_t)DEV_RD_RAM_PAGES << 12)
 
+/* Optional ECB-USB-FIFO board on ECB bus */
+//#define CONFIG_ECB_USB_FIFO_TTY
+#define ECB_USB_FIFO_IO_BASE    0x0C
+
 /* Optional PropIOv2 board on ECB bus */
 //#define CONFIG_PROPIO2		/* #define CONFIG_PROPIO2 to enable as tty3 */
 #define PROPIO2_IO_BASE		0xA8
 
-/* Device parameters */
 #ifdef CONFIG_PROPIO2
-	#define NUM_DEV_TTY 3
-
-	/* PropIO as the console */
-	#define TTYDEV   (512+3)  /* System console (used by kernel, init) */
+    #define NUM_TTY_PROPIO2 1
+    #define TTYDEV   (512+3)  /* PropIOv2 as system console (used by kernel, init) if configured */
 #else
-	#define NUM_DEV_TTY 2
+    #define NUM_TTY_PROPIO2 0
+#endif
 
-	/* ASCI0 as the console */
-	#define TTYDEV   (512+1)  /* System console (used by kernel, init) */
+#ifdef CONFIG_ECB_USB_FIFO_TTY
+    #define NUM_TTY_ECB_USB_FIFO 1
+#else
+    #define NUM_TTY_ECB_USB_FIFO 0
+#endif
+
+#define NUM_DEV_TTY (2+NUM_TTY_PROPIO2+NUM_TTY_ECB_USB_FIFO)
+
+#ifndef TTYDEV  /* default if PropIOV2, ECB-USB-FIFO absent: use ASCI0 as the console */
+    #define TTYDEV   (512+1)  /* ASCI0 as system console (used by kernel, init) */
 #endif
