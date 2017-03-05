@@ -4,6 +4,9 @@
 #include <devtty.h>
 #include "config.h"
 #include <z180.h>
+#include <devide.h>
+#include <devsd.h>
+#include <ds1302.h>
 
 void init_hardware_c(void)
 {
@@ -37,4 +40,11 @@ uint8_t platform_param(char *p)
 {
     used(p);
     return 0;
+}
+
+void device_init(void)
+{
+    devide_init();
+    devsd_init();
+    ds1302_init();
 }
