@@ -51,7 +51,9 @@ void platform_interrupt(void)
 {
     switch(irqvector){
         case Z180_INT0:
+#ifdef CONFIG_ECB_USB_FIFO_TTY
             tty_pollirq_usb_fifo();
+#endif
             return;
         case Z180_INT_TIMER0:
             z180_timer_interrupt(); 
