@@ -14,22 +14,18 @@
 #define CONFIG_BANK_FIXED
 #define MAX_MAPS	4
 #define MAPBASE		0x00200000
-#define MAP_SIZE	0x00100000
+#define MAP_SIZE	0x0001FC00
 
 #define CONFIG_BANKS 	1
-#define PROC_SIZE	MAP_SIZE			/* 1MB */
-
-#define CONFIG_SPLIT_UDATA
-#define UDATA_SIZE	1024
-#define UDATA_BLKS	2
+#define PROC_SIZE	MAP_SIZE			/* 128K minus udata */
 
 #define PROGBASE	MAPBASE
 #define PROGTOP		(MAPBASE + MAP_SIZE)
-#define SWAP_SIZE	((MAP_SIZE/512) + 2)		/* 2 for the udata */
+#define SWAP_SIZE	256				/* 128K including udata */
 #define SWAPBASE	PROGBASE
-#define SWAPTOP		PROGTOP
-#define MAX_SWAPS	3				/* So can reuse the same fs */
-                                                        /* Use a bigger swap area for real uses ! */
+#define SWAPTOP		(PROGTOP + 0x400)
+#define MAX_SWAPS	16
+
 #define swap_map(x)	((uint8_t *)(x))
 
 #define SWAPDEV		(1)

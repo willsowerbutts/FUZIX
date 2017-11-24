@@ -2,6 +2,12 @@
 ;    ZX Spectrum Plus 2A and Plus 3 hardware support
 ;
 
+;
+;	For the moment we just have a single user bank and simple swap. Once
+;	we have things running that will be changed and will need the map
+;	handlers here to be adjusted
+;
+
         .module plus3
 
         ; exported symbols
@@ -21,14 +27,15 @@
         .globl map_restore
 	.globl map_process_save
 	.globl map_kernel_restore
-	.globl map_video
-	.globl unmap_video
+	.globl map_for_swap
 
+        .globl _need_resched
         .globl _kernel_flag
 	.globl port_map
 
         ; exported debugging tools
         .globl _trap_monitor
+        .globl _trap_reboot
         .globl outchar
 
         ; imported symbols
@@ -88,11 +95,10 @@ init_hardware:
         ld hl, #(128 - 64)        ; 64K for kernel/screen/etc
         ld (_procmem), hl
 
-	call map_video
         ; screen initialization
         ; clear
-        ld hl, #0xC000
-        ld de, #0xC001
+        ld hl, #0x4000
+        ld de, #0x4001
         ld bc, #0x1800            ; There should be 0x17FF, but we are going
         xor a                     ; to copy additional byte to avoid need of
         ld (hl), a                ; DE and HL increment before attribute
@@ -104,7 +110,6 @@ init_hardware:
         ld (hl), a
         ldir
 
-	call unmap_video
         ret
 
 ;------------------------------------------------------------------------------
@@ -151,8 +156,7 @@ _program_vectors:
 
 switch_kernel:
 	ld a, (port_map)
-	and #0xF8		; Preserve the other bits
-	or #0x05		; Map 4,5,6,3
+	or #0x07		; Map 4,7,6,3
 switchit:
 	push bc
 	ld (port_map), a
@@ -165,11 +169,7 @@ switch_user:
 	ld a, (port_map)
 	and #0xF8		; Preserve the other bits
 	and #0x01		; Map 0,1,2,3
-	jr switch_kernel
-
-switch_video:
-	ld a, (port_map)
-	or #0x7			; Map 4,7,6,3
+	or #0x04
 	jr switchit
 
 map_process:
@@ -183,17 +183,10 @@ map_process_always:
 	pop af
 	ret
 
-unmap_video:
 map_kernel:
 map_kernel_restore:
 	push af
 	call switch_kernel
-	pop af
-	ret
-
-map_video:
-	push af
-	call switch_video
 	pop af
 	ret
 
@@ -216,6 +209,14 @@ map_restore:
 	pop hl
 	pop af
 	ret
+
+;
+;	a is 1 for the first bank 2 for the second. Switch to that process
+;	bank
+;
+map_for_swap:
+	jp switch_user
+
 ;
 ;	We have no easy serial debug output instead just breakpoint this
 ;	address when debugging.
@@ -226,6 +227,8 @@ outchar:
 	.area _COMMONDATA
 _kernel_flag:
         .db 1
+_need_resched:
+        .db 0
 port_map:                   ; place to store current map register values
         .db 0               ; because we have no ability to read 1ffd port
                             ; to detect what page is mapped currently 

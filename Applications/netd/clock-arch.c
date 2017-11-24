@@ -46,16 +46,16 @@
 clock_time_t
 clock_time(void)
 {
-  struct timeval tv;
-  struct timezone tz;
+  static uint8_t init;
+  static time_t tbase;
+  time_t t;
 
-  //  gettimeofday(&tv, &tz);
-  struct{
-      uint16_t high;
-      uint16_t low;
-  }now;
-  _time((__ktime_t *)&now,1);
-  return now.low;
-  //  return tv.tv_sec * 1000 + tv.tv_usec / 1000;
+  if (!init) {
+    init = 1;
+    time(&tbase);
+  }
+  time(&t);
+  t -= tbase;
+  return t;
 }
 /*---------------------------------------------------------------------------*/

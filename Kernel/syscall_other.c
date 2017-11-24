@@ -26,6 +26,7 @@ put inside itself!
 
 arg_t _rename(void)
 {
+#ifndef CONFIG_LEVEL_0
 	staticfast inoptr srci, srcp, dsti, dstp;
 	char fname[FILENAME_LEN + 1];
 	arg_t ret;
@@ -115,6 +116,10 @@ arg_t _rename(void)
 	if (dsti)
 		i_deref(dsti);
 	goto nogood2;
+#else
+	udata.u_error = -ENOSYS;
+	return -1;
+#endif		
 }
 
 #undef src
@@ -131,6 +136,7 @@ arg_t _rename(void)
 
 arg_t _mkdir(void)
 {
+#ifndef CONFIG_LEVEL_0
 	inoptr ino;
 	inoptr parent;
 	char fname[FILENAME_LEN + 1];
@@ -185,7 +191,10 @@ arg_t _mkdir(void)
       nogood2:
 	i_deref(parent);
 	return (-1);
-
+#else
+	udata.u_error = -ENOSYS;
+	return -1;
+#endif		
 }
 
 #undef name
@@ -199,6 +208,7 @@ char *path;
 
 arg_t _rmdir(void)
 {
+#ifndef CONFIG_LEVEL_0
 	inoptr ino;
 	inoptr parent;
 	char fname[FILENAME_LEN + 1];
@@ -255,6 +265,11 @@ arg_t _rmdir(void)
 	i_deref(parent);
 	i_deref(ino);
 	return (-1);
+#else
+	udata.u_error = -ENOSYS;
+	return -1;
+#endif		
+
 }
 
 #undef path
@@ -332,23 +347,90 @@ arg_t _mount(void)
 
 
 /*******************************************
-  umount (spec)                    Function 34
+  _umount (spec)                   Function 34
   char *spec;
  ********************************************/
+
 #define spec (char *)udata.u_argn
+#define flags (uint16_t)udata.u_argn1
+
+static int do_umount(uint16_t dev)
+{
+	struct mount *mnt;
+	uint8_t rm = flags & MS_REMOUNT;
+	inoptr ptr;
+
+	mnt = fs_tab_get(dev);
+	if (mnt == NULL) {
+		udata.u_error = EINVAL;
+		return -1;
+	}
+
+	/* If anything on this file system is open for write then you
+	   can't remount it read only */
+	if (flags & (MS_RDONLY|MS_REMOUNT) == (MS_RDONLY|MS_REMOUNT)) {
+		for (ptr = i_tab ; ptr < i_tab + ITABSIZE; ++ptr) {
+			if (ptr->c_dev == dev && !isdevice(ptr)) {
+			/* Files being written block the remount ro, but so
+			   do files that when closed will be deleted */
+				if (ptr->c_writers ||
+					!ptr->c_node.i_nlink) {
+					udata.u_error = EBUSY;
+					return -1;
+				}
+			}
+		}
+	}
+
+	/* Sweep the inode table. If unmounting look for any references
+	   and if so fail. If remounting update the CRDONLY flags */
+	for (ptr = i_tab; ptr < i_tab + ITABSIZE; ++ptr) {
+		if (ptr->c_dev == dev) {
+			if (rm) {
+				ptr->c_flags &= ~CRDONLY;
+				if (flags & MS_RDONLY)
+					ptr->c_flags |= CRDONLY;
+				else
+					ptr->c_flags &= ~CRDONLY;
+			} else if (ptr->c_refs) {
+				udata.u_error = EBUSY;
+				return -1;
+			}
+		}
+	}
+
+	if (!rm)
+		mnt->m_fs.s_fmod = FMOD_GO_CLEAN;
+
+	sync();
+
+	if (rm) {
+		mnt->m_flags &= ~(MS_RDONLY|MS_NOSUID);
+		mnt->m_flags |= flags & (MS_RDONLY|MS_NOSUID);
+		/* You can choose to remount a corrupt fs r/o in which case
+		   it gets marked clean. We may want to rethink that FIXME */
+		if (mnt->m_flags & MS_RDONLY)
+			mnt->m_fs.s_fmod = FMOD_GO_CLEAN;
+		return 0;
+	}
+
+	i_deref(mnt->m_fs.s_mntpt);
+	/* Vanish the entry */
+	mnt->m_dev = NO_DEVICE;
+	return 0;
+}
 
 arg_t _umount(void)
 {
 	inoptr sino;
 	uint16_t dev;
-	inoptr ptr;
-	struct mount *mnt;
+	arg_t ret = -1;
 
 	if (esuper())
-		return (-1);
+		return -1;
 
 	if (!(sino = n_open(spec, NULLINOPTR)))
-		return (-1);
+		return -1;
 
 	if (getmode(sino) != MODE_R(F_BDEV)) {
 		udata.u_error = ENOTBLK;
@@ -360,37 +442,14 @@ arg_t _umount(void)
 		udata.u_error = ENXIO;
 		goto nogood;
 	}
-
-	mnt = fs_tab_get(dev);
-	if (mnt == NULL) {
-		udata.u_error = EINVAL;
-		goto nogood;
-	}
-
-	for (ptr = i_tab; ptr < i_tab + ITABSIZE; ++ptr)
-		if (ptr->c_refs > 0 && ptr->c_dev == dev) {
-			udata.u_error = EBUSY;
-			goto nogood;
-		}
-
-	sync();
-
-	i_deref(mnt->m_fs->s_mntpt);
-	/* Give back the buffer we pinned at mount time */
-	((bufptr)mnt->m_fs)->bf_busy = BF_BUSY; /* downgrade from BF_SUPERBLOCK */
-	bfree((bufptr)mnt->m_fs, 2);
-	/* Vanish the entry */
-	mnt->m_dev = NO_DEVICE;
+	ret = do_umount(dev);
+nogood:
 	i_deref(sino);
-	return 0;
-
-      nogood:
-	i_deref(sino);
-	return -1;
+	return ret;
 }
 
 #undef spec
-
+#undef flags
 
 
 /*******************************************
@@ -428,6 +487,7 @@ arg_t _profil(void)
 	p->p_profoff = offset;
 	return 0;
 #else
+	udata.u_error = ENOSYS;
 	return -1;
 #endif
 }
@@ -451,7 +511,8 @@ arg_t _uadmin(void)
 {
 	if (esuper())
 		return -1;
-	sync();
+	if (func != AD_NOSYNC)
+		sync();
 	/* Wants moving into machine specific files */
 	if (cmd == A_SHUTDOWN || cmd == A_DUMP)
 		trap_monitor();

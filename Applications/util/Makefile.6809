@@ -72,6 +72,7 @@ SRCS  = \
 	fdisk.c \
 	fforth.c \
 	fgrep.c \
+	free.c \
 	fsck.c \
 	grep.c \
 	id.c \
@@ -87,6 +88,7 @@ SRCS  = \
 	od.c \
 	passwd.c \
 	ps.c \
+	remount.c \
 	sed.c \
 	sleep.c \
 	ssh.c \
@@ -139,7 +141,7 @@ size.report: $(APPS) $(APPSNS) $(APPTC)
 	ls -l $^ > $@
 
 clean:
-	rm -f $(OBJS) $(OBJSNS) $(APPS) $(APPSNS) $(APPTC) $(SRCS:.c=) core *~ *.asm *.lst *.sym *.map *.noi *.lk *.ihx *.tmp *.bin size.report
+	rm -f $(OBJS) $(OBJSNS) $(APPS) $(APPSNS) $(APPTC) $(SRCS:.c=) core *~ *.asm *.lst *.sym *.map *.noi *.lk *.ihx *.tmp *.bin *.o size.report
 
 rmbak:
 	rm -f *~ core

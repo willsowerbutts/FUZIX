@@ -36,6 +36,7 @@ f 0755 /bin/mv          mv
 f 0755 /bin/printenv    printenv
 f 0755 /bin/ps          ps
 f 0755 /bin/pwd         pwd
+f 0755 /bin/remount     remount
 f 0755 /bin/rm          rm
 f 0755 /bin/rmdir       rmdir
 f 0755 /bin/ssh         ssh
@@ -59,11 +60,11 @@ f 0755 /bin/cut         cut
 f 0755 /bin/decomp16    decomp16
 f 0755 /bin/dirname     dirname
 f 0755 /bin/dosread     dosread
-f 0755 /bin/du          du
 f 0755 /bin/env         env
 f 0755 /bin/factor      factor
 f 0755 /bin/false       false
 f 0755 /bin/fdisk       fdisk
+f 0755 /bin/free        free
 f 0755 /bin/fsck        fsck
 f 0755 /bin/grep        grep
 f 0755 /bin/groups      groups
@@ -82,6 +83,7 @@ f 0755 /bin/pagesize    pagesize
 f 0755 /bin/passwd      passwd
 f 0755 /bin/prtroot     prtroot
 f 0755 /bin/reboot      reboot
+l /bin/reboot /bin/halt
 f 0755 /bin/sed         sed
 f 0755 /bin/sleep       sleep
 f 0755 /bin/sort        sort

@@ -34,7 +34,7 @@ void header (void) {
     newline ();
     output_line ("\t;program area SMALLC_GENERATED is RELOCATABLE");
     output_line ("\t.module SMALLC_GENERATED");
-    gen_code();
+    code_segment_gtext();
 }
 
 /**
@@ -67,6 +67,15 @@ void output_label_terminator (void) {
 }
 
 /**
+ * Output a C label with leading _
+ */
+void output_label_name(char *p)
+{
+    output_byte('_');
+    output_string(p);
+}
+
+/**
  * begin a comment line for the assembler
  */
 void gen_comment(void) {
@@ -85,6 +94,7 @@ void trailer(void) {
  */
 void code_segment_gtext(void) {
     output_line ("\t.text");
+    indata = 0;
 }
 
 /**
@@ -92,6 +102,7 @@ void code_segment_gtext(void) {
  */
 void data_segment_gdata(void) {
     output_line ("\t.data");
+    indata = 1;
 }
 
 /**
@@ -139,7 +150,7 @@ static void describe_access(SYMBOL *sym)
     } else if (sym->storage == LSTATIC)
         print_label(sym->offset);
     else
-        output_string(sym->name);
+        output_label_name(sym->name);
     newline();
 }
 
@@ -907,14 +918,3 @@ void gen_statement_end(void)
     output_line(";end");
 }
 
-void gen_data(void)
-{
-    indata = 1;
-    output_line(".data");
-}
-
-void gen_code(void)
-{
-    indata = 0;
-    output_line(".code");
-}

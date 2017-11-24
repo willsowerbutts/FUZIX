@@ -196,6 +196,8 @@ static int clear_utmp(struct initpid *ip, uint16_t count, pid_t pid)
 			ut.ut_id[1] = p[2];
 			*ut.ut_user = 0;
 			pututline(&ut);
+			/* So we don't leave this open for write */
+			endutent();
 			/* Mark as done */
 			initpid[i].pid = 0;
 			/* Respawn the task if appropriate */
@@ -218,7 +220,7 @@ static void clear_zombies(int flags)
 	/* See if we care what died. If we do then also check that
 	 * do not need to respawn it
 	 */
-	 if (clear_utmp(initpid, initcount, pid) == 0)
+	if (clear_utmp(initpid, initcount, pid) == 0)
 	 	return;
 	if (oldpid)
 		clear_utmp(oldpid, oldcount, pid);
@@ -283,6 +285,7 @@ static void parse_initline(void)
 		bad_line();
 		return;
 	}
+	*idata = 0;
 	while (*sdata != ':') {
 		if (*sdata == '\n' || sdata > sdata_end) {
 			bad_line();
@@ -358,6 +361,9 @@ static void brk_warn(void *p)
  */
 static void parse_inittab(void)
 {
+	struct initpid *ip;
+	uint8_t *p;
+	int i;
 	idata = inittab = sdata;
 	while (sdata < sdata_end)
 		parse_initline();
@@ -365,7 +371,15 @@ static void parse_inittab(void)
 	initpid = (struct initpid *) idata;
 	idata += sizeof(struct initpid) * initcount;
 	brk_warn(idata);
-	memset(initpid, 0, sizeof(struct initpid) * initcount);
+	ip = initpid;
+	p = inittab;
+	for (i = 0; i < initcount; i++) {
+		ip->id[0] = p[1];
+		ip->id[1] = p[2];
+		ip->pid = 0;
+		p += *p;
+		ip++;
+	}
 }
 
 /*
@@ -437,6 +451,7 @@ static void reload_inittab(void)
 	/* FIXME: we don't kill and restart an entry that has changed but
 	   will respawn the new form. There isn't an easy way to fix that
 	   without further major reworking */
+	/* FIXME: do all the HUPs then one sleep then all the KILLs */
 	for (i = 0; i < oldcount; i++) {
 		struct initpid *n = find_id(p->id);
 		if (n == NULL && p->pid) {
@@ -447,6 +462,7 @@ static void reload_inittab(void)
 		} else {
 			n->pid = p->pid;
 		}
+		p++;
 	}
 	/* We could shuffle all the pointers back down and free the old
 	   pid table, but there is no point. If we do a further reload
@@ -467,11 +483,10 @@ static int cleanup_runlevel(uint8_t oldmask, uint8_t newmask, int sig)
 
 	while (n < initcount) {
 		/* Dying ? */
-		if ((p[3] & oldmask) && !(p[3] && newmask)) {
+		if ((p[3] & oldmask) && !(p[3] & newmask)) {
 			/* Count number still to die */
 			if (p[4] == INIT_RESPAWN && initpid[n].pid) {
-				/* Group kill */
-				if (kill(-initpid[n].pid, sig) == 0)
+				if (kill(initpid[n].pid, sig) == 0)
 					nrun++;
 			}
 		}
@@ -502,7 +517,7 @@ static void exit_runlevel(uint8_t oldmask, uint8_t newmask)
 }
 
 /*
- *	Start everything that should be runnign at this run level. Take
+ *	Start everything that should be running at this run level. Take
  *	care not to re-start stuff that survives the transition
  */
 static void do_for_runlevel(uint8_t newmask, int op)
@@ -511,8 +526,6 @@ static void do_for_runlevel(uint8_t newmask, int op)
 	struct initpid *t = initpid;
 	int n = 0;
 	while (n < initcount) {
-		t->id[0] = p[1];
-		t->id[1] = p[2];
 		if (!(p[3] & newmask))
 			goto next;
 		if ((p[4] & INIT_OPMASK) == op) {
@@ -574,17 +587,10 @@ int main(int argc, char *argv[])
 
 	/* make stdin, stdout and stderr point to /dev/tty1 */
 
-	if (fdtty1 != 0)
-		close(0);
 	dup(fdtty1);
-	close(1);
-	dup(fdtty1);
-	close(2);
 	dup(fdtty1);
 
 	putstr("init version 0.9.0ac#1\n");
-
-	close(open("/var/run/utmp", O_WRONLY | O_CREAT | O_TRUNC));
 
 	membase = sbrk(0);
 
@@ -596,15 +602,10 @@ int main(int argc, char *argv[])
 	for (;;) {
 		clear_zombies(0);
 		if (dingdong) {
-			uint8_t newrl;
+			uint8_t newrl, orl;
 			int fd = open("/var/run/initctl", O_RDONLY);
 			if (fd != -1 && read(fd, &newrl, 1) == 1) {
-				write(1, &newrl, 1);
-				if (newrl != 'q') {
-					exit_runlevel(1 << runlevel, 1 << newrl);
-					runlevel = newrl;
-					enter_runlevel(1 << runlevel);
-				} else {
+				if (newrl == 'q') {
 					/* Reload */
 					reload_inittab();
 					/* Prune anything running that should
@@ -613,6 +614,13 @@ int main(int argc, char *argv[])
 					/* Start anything added to the current
 					   run level */
 					enter_runlevel(1 << runlevel);
+				} else if (newrl != runlevel) {
+					orl = runlevel;
+					/* Set this before we reap anything
+					   or it will respawn */
+					runlevel = newrl;
+					exit_runlevel(1 << orl, 1 << newrl);
+					enter_runlevel(1 << newrl);
 				}
 			}
 			close(fd);
@@ -784,6 +792,8 @@ static pid_t getty(const char **argv, const char *id)
 			   than ulongs! */
 			tref.c_cflag |= baudmatch(argv[1]);
 
+			tcsetattr(fdtty, TCSANOW, &tref);
+
 			/* make stdin, stdout and stderr point to fdtty */
 
 			dup(fdtty);
@@ -794,6 +804,7 @@ static pid_t getty(const char **argv, const char *id)
 			ut.ut_id[0] = id[0];
 			ut.ut_id[1] = id[1];
 			pututline(&ut);
+			endutent();
 
 			/* display the /etc/issue file, if exists */
 			if (issue)
@@ -814,9 +825,10 @@ static pid_t getty(const char **argv, const char *id)
 
 				pwd = getpwnam(buf);
 
+				if (pwd == NULL || *pwd->pw_passwd)
+					p = getpass("Password: ");
 				if (pwd) {
-					if (pwd->pw_passwd[0] != '\0') {
-						p = getpass("Password: ");
+					if (*pwd->pw_passwd) {
 						salt[0] = pwd->pw_passwd[0];
 						salt[1] = pwd->pw_passwd[1];
 						salt[2] = '\0';
@@ -826,7 +838,8 @@ static pid_t getty(const char **argv, const char *id)
 					}
 					if (strcmp(pr, pwd->pw_passwd) == 0)
 						spawn_login(pwd, argv[0], id, host);
-				}
+				} else /* So you can't tell by the delay time */
+					crypt(p, "ZZ");
 
 				putstr("\nLogin incorrect\n\n");
 				signal(SIGALRM, sigalarm);
@@ -871,6 +884,8 @@ static void spawn_login(struct passwd *pwd, const char *tty, const char *id, con
 	envset("LOGNAME", pwd->pw_name);
 	envset("HOME", pwd->pw_dir);
 	envset("SHELL", pwd->pw_shell);
+
+	umask(022);
 
 	/* home directory */
 

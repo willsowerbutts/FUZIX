@@ -6,6 +6,7 @@ AR = m6809-unknown-ar
 LINKER = lwlink
 CFLAGS = -I../../Library/include -I../../Library/include/6809
 CFLAGS += -O0 -msoft-reg-count=0 -mfar-stack-param -fomit-frame-pointer
+CFLAGS += -DNETD_BIG_ENDIAN
 LINKER_OPT = --format=raw -L../../Library/libs -lc6809
 LIBGCCDIR = $(dir $(shell $(CC) -print-libgcc-file-name))
 LINKER_OPT += -L$(LIBGCCDIR) -lgcc
@@ -17,6 +18,7 @@ CRT0 = ../../Library/libs/crt0_6809.o
 
 SRCS  = netd.c uip.c uiplib.c timer.c clock-arch.c uip_arp.c telnet.c lwwire.c
 SRCS += echoping.c dig.c gethostbyname.c httpd.c coconic.c ping.c ntpdate.c
+SRCS += htget.c tinyirc.c linein.c
 
 OBJS = $(SRCS:.c=.o)
 
@@ -34,8 +36,8 @@ netd: $(OBJS)
 	$(LINKER) $(LINKER_OPT) -o httpd $(CRT0) httpd.o
 	$(LINKER) $(LINKER_OPT) -o ping $(CRT0) ping.o gethostbyname.o
 	$(LINKER) $(LINKER_OPT) -o ntpdate $(CRT0) ntpdate.o gethostbyname.o
-
-
+	$(LINKER) $(LINKER_OPT) -o htget $(CRT0) htget.o gethostbyname.o
+	$(LINKER) $(LINKER_OPT) -o tinyirc $(CRT0) tinyirc.o linein.o gethostbyname.o
 
 size.report: $(APPS)
 	ls -l $^ > $@

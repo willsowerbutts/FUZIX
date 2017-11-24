@@ -78,6 +78,7 @@
 // #include "../ipv4/uip-neighbor.h"
 
 #include <string.h>
+#include <stdlib.h>
 // #include "../ip/cc.h"
 
 /*---------------------------------------------------------------------------*/
@@ -373,10 +374,6 @@ uip_init(void)
   for(c = 0; c < UIP_CONNS; ++c) {
     uip_conns[c].tcpstateflags = UIP_CLOSED;
   }
-#if UIP_ACTIVE_OPEN || UIP_UDP
-  lastport = 1024;
-#endif /* UIP_ACTIVE_OPEN || UIP_UDP */
-
 #if UIP_UDP
   for(c = 0; c < UIP_UDP_CONNS; ++c) {
     uip_udp_conns[c].lport = 0;
@@ -394,6 +391,15 @@ uip_init(void)
 #if UIP_FIXEDADDR == 0
   /*  uip_hostaddr[0] = uip_hostaddr[1] = 0;*/
 #endif /* UIP_FIXEDADDR */
+  srand(getpid()^time(NULL));
+  iss[0] = rand() >> 4;
+  iss[1] = rand() >> 3;
+  iss[2] = rand() >> 1;
+  iss[3] = rand() >> 6;
+
+#if UIP_ACTIVE_OPEN || UIP_UDP
+  lastport = 1024 + rand() & 0x3FFF;
+#endif /* UIP_ACTIVE_OPEN || UIP_UDP */
 
 }
 /*---------------------------------------------------------------------------*/
@@ -521,7 +527,7 @@ uip_raw_new(const uip_ipaddr_t *ripaddr, uint8_t proto)
 {
   register struct uip_raw_conn *conn;
 
-  /* disallow UDP,TCP ?
+  /* disallow UDP,TCP ? */
 
   /* find an unused RAW connection */
   conn = 0;
@@ -731,6 +737,11 @@ uip_process(uint8_t flag)
   /* Check if we were invoked because of a poll request for a
      particular connection. */
   if(flag == UIP_POLL_REQUEST) {
+    if(uip_connr->userrequest) {
+	uip_flags = UIP_POLL;
+	UIP_APPCALL();
+	goto appsend;
+    }
     if((uip_connr->tcpstateflags & UIP_TS_MASK) == UIP_ESTABLISHED &&
        !uip_outstanding(uip_connr)) {
 	uip_flags = UIP_POLL;

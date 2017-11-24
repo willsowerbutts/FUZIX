@@ -24,7 +24,11 @@ struct _uzisysinfoblk {
   uint16_t usedk;		/* Used memory in KB */
   uint16_t config;		/* Config flag mask */
   uint16_t loadavg[3];
-  uint32_t spare;
+  uint16_t swapk;
+  uint16_t swapusedk;
+  uint8_t cputype;		/* CPU type information */
+  uint8_t cpu[3];		/* CPU type specific data */
+  uint16_t spare[8];
 };
 
 /*
@@ -120,7 +124,7 @@ extern int brk(void *addr);
 extern void *sbrk(intptr_t increment);
 extern pid_t _fork(uint16_t flags, void *addr);
 extern int mount(const char *dev, const char *path, int flags);
-extern int umount(const char *dev);
+extern int _umount(const char *dev, int flags);
 extern sighandler_t signal(int signum, sighandler_t sighandler);
 extern int dup2(int oldfd, int newfd);
 extern int _pause(unsigned int dsecs);

@@ -1,51 +1,73 @@
-TOP = .
-BUILD = $(TOP)/Build
+# Set this to the desired platform to build
+#
+# Useful values for general work
+#
+# coco2cart:	Tandy COCO2 or Dragon with 64K and IDE or SDC + cartridge flash
+#		(or modified xroar)
+# coco3:	Tandy COCO3 512K (or MAME)
+# dragon-nx32:	Dragon 32/64 with Spinx 512K card (or modified xroar)
+# msx2:		MSX2 with 128K or more and MegaFlashROM+SD interface
+#		(or OpenMSX suitably configured)
+# mtx:		Memotech MTX512 with SDX (or MEMU emulator)
+# multicomp09:	Extended multicomp 6809
+# n8vem-mark4:	N8VEM Retrobrew Z180 board
+# nc100:	Amstrad NC100 (or emulator)
+# p112:		DX Designs P112
+# socz80:	Will Sowerbutt's FPGA SocZ80 or extended version
+# trs80:	TRS80 Model 4P with 128K RAM (some other TRS80 extension
+#		mappers have untested code in the tree)
+# z80pack:	Z80Pack virtual Z80 platform
+# zeta-v2:	Zeta retrobrew SBC
+#
+# Virtual platforms for in progress development work
+#
+# v65:		Virtual platform for 6502 development
+# v65c816:	Virtual platform for 65c816 development
+# v68:		Virtual platfomr for 68000 development
 
-OBJ = .obj
-hide = @
+TARGET=z80pack
 
-CFLAGS = -g -Os
-LDFLAGS = -g
+# Get the CPU type
+include Kernel/platform-$(TARGET)/target.mk
 
-VERSION = "0.1"
-SUBVERSION = "ac1"
-
-host.cflags = $(CFLAGS)
-host.ldflags = $(LDFLAGS)
-
-all:
-
-ifeq ($(PLATFORM),)
-$(error You must specify a PLATFORM)
+ifeq ($(USERCPU),)
+	USERCPU = $(CPU)
 endif
 
-# Export these files from the build system.
+# FIXME: we should make it possible to do things entirely without /opt/fcc
+PATH := /opt/fcc/bin:$(PATH)
 
-chmem.result = bin/chmem
-size.result = bin/size
-mkfs.result = bin/mkfs
-fsck.result = bin/fsck
-ucp.result = bin/ucp
+# TARGET is what we are building
+# CPU is the CPU type for the kernel
+# USERCPU is the CPU type for userspace and eventually may be different
+# (eg for 65c816 with 6502 user)
+export TARGET CPU USERCPU PATH
 
-filesystem.result = filesystem-$(PLATFORM).img
+all: stand ltools libs apps kernel
 
-include $(BUILD)/bake.mk
-include $(BUILD)/platforms/$(PLATFORM).mk
-include $(BUILD)/rules/standard.rules.mk
-include $(TOP)/Kernel/tools/build.mk
-include $(TOP)/Standalone/build.mk
-include $(TOP)/Library/build.mk
-include $(TOP)/Library/tests/build.mk
-include $(TOP)/Applications/build.mk
-include $(TOP)/Applications/V7/cmd/sh/build.mk
-include $(TOP)/Applications/levee/build.mk
-include $(TOP)/Standalone/filesystem-src/build.mk
 
-ifeq ($(wildcard $(TOP)/Kernel/platform-$(PLATFORM)/build.mk),)
-$(warning (building the kernel for $(PLATFORM) isn't set up from here yet))
-else
-include $(TOP)/Kernel/platform-$(PLATFORM)/build.mk
-all: kernel
-endif
+stand:
+	+(cd Standalone; $(MAKE))
 
-all: tests standalones filesystem
+ltools:
+	+(cd Library; $(MAKE); $(MAKE) install)
+
+libs: ltools
+	+(cd Library/libs; $(MAKE) -f Makefile.$(USERCPU); \
+		$(MAKE) -f Makefile.$(USERCPU) install)
+
+apps: libs
+	+(cd Applications; $(MAKE))
+
+kernel: ltools
+	+(cd Kernel; $(MAKE))
+
+kclean:
+	+(cd Kernel; $(MAKE) clean)
+
+clean:
+	+(cd Standalone; $(MAKE) clean)
+	+(cd Library/libs; $(MAKE) -f Makefile.$(USERCPU) clean)
+	+(cd Library; $(MAKE) clean)
+	+(cd Kernel; $(MAKE) clean)
+	+(cd Applications; $(MAKE) clean)

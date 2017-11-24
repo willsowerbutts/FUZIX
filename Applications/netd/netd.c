@@ -23,14 +23,17 @@ todo:
 * refactor  RAW with UDP code as they are very similar
 
 */
-
+#define TRACE
 
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <fcntl.h>
 #include <string.h>
+#include <ctype.h>
 #include <unistd.h>
+#include <errno.h>
 #include <sys/drivewire.h>
 #include <sys/netdev.h>
 #include <sys/net_native.h>
@@ -61,6 +64,7 @@ int freelist[NSOCKET];
 int freeptr = 0;
 int looplen = 0;
 
+uint16_t activity;		/* Must be enough bits for NSOCKET */
 
 /* print an error message */
 void printe( char *mesg )
@@ -79,6 +83,14 @@ void exit_err( char *mesg )
 void ksend( int event )
 {
 	ne.ret = 0;
+	ne.event = event;
+	if ( write( knet, &ne, sizeof(ne) ) < 0 )
+		exit_err("cannot write kernel net dev\n");
+}
+
+/* wrapper around writing to kernel net device */
+void ksende( int event)
+{
 	ne.event = event;
 	if ( write( knet, &ne, sizeof(ne) ) < 0 )
 		exit_err("cannot write kernel net dev\n");
@@ -176,9 +188,12 @@ uint16_t cap( struct link *s )
 }
 
 /* uIP callback for TCP events */
-void netd_appcall()
+void netd_appcall(void)
 {
-	/*
+	struct link *s = & map[uip_conn->appstate];
+	ne.socket = s->socketn;
+
+#ifdef TRACE
 	  printe( "appcall: " );
 	  if( uip_aborted() ) printe("aborted.\n");
 	  if( uip_acked() )  printe("acked.\n");
@@ -188,10 +203,10 @@ void netd_appcall()
 	  if( uip_rexmit() ) printe("rexmit.\n");
 	  if( uip_timedout() ) printe("timed out.\n");
 	  if( uip_connected() ) printe("connected.\n" );
-	*/
-	struct link *s = & map[uip_conn->appstate];
-	ne.socket = s->socketn;
+#endif
 
+	if (s->flags & LINK_DEAD)
+		return;
 	/* uIP sends up a connected event for both
 	   active and passive opens */
 	if ( uip_connected() ){
@@ -218,6 +233,7 @@ void netd_appcall()
 			/* Not a listing port so assume a active open */
 			ne.data = SS_CONNECTED;
 			ksend( NE_NEWSTATE );
+			s->flags |= LINK_OPEN;
 		}
 	}
 
@@ -291,11 +307,16 @@ void netd_appcall()
 
 		/* test for local close - LINK_CLOSED is set by kernel event thread */
 		if ( s->flags & LINK_CLOSED ){
-			uip_close();
+			if (uip_outstanding(uip_conn))
+				uip_abort();
+			else
+				uip_close();
 			s->flags &= ~LINK_CLOSED;
-			s->flags |= LINK_SHUTW;
-			if ( s->flags & LINK_SHUTR )
-				rel_map( uip_conn->appstate );
+			s->flags |= LINK_SHUTW | LINK_DEAD;
+			ne.socket = s->socketn;
+			rel_map( uip_conn->appstate );
+			ne.data = SS_CLOSED;
+			ksend(NE_NEWSTATE);
 		}
 
 	}
@@ -305,38 +326,51 @@ void netd_appcall()
 		send_tcp( s );
 	}
 
-	if ( uip_closed() || uip_aborted() ){
+	if (uip_aborted()) {
+		s->flags |= LINK_SHUTR|LINK_SHUTW;
+		if (s->flags & LINK_OPEN)
+			ne.ret = ECONNRESET;
+		else
+			ne.ret = ECONNREFUSED;
+		ksende(NE_RESET);
+		s->flags |= LINK_DEAD;
+		rel_map( uip_conn->appstate );
+	} else if (uip_timedout()) {
+		ne.ret = ETIMEDOUT;
+		ksende(NE_RESET);
+		s->flags |= LINK_DEAD;
+		rel_map( uip_conn->appstate );
+	} else if ( uip_closed()) {
 		int e;
 		switch ( s->flags & (LINK_SHUTR | LINK_SHUTW) ){
-		case 0:
+		case 0:	/* Shutting before us */
 			e = NE_SHUTR;
+			/* formulate and send reset of message */
+			ksend( e );
 			break;
-		case LINK_SHUTR:
-			goto close;
+		case LINK_SHUTR:	/* We already did a SHUT_R */
+			break;
+		/* Shutting after us : in theory can't happen */
 		case LINK_SHUTW:
 			e = NE_NEWSTATE;
 			break;
 		case LINK_SHUTR | LINK_SHUTW:
+			s->flags |= LINK_DEAD;
+			rel_map( uip_conn->appstate );
 			return;
 		}
-		/* formulate and send reset of message */
-		ne.data = SS_CLOSED;
-		ksend( e );
-		/* release link resource if both sides closed */
-		/* mark link as remote closed */
-	close:
-		s->flags |= LINK_SHUTR;
-		if ( s->flags & LINK_SHUTW )
-			rel_map( uip_conn->appstate );
 	}
 }
 
 
 
 /* uIP callbck for UDP event */
-void netd_udp_appcall()
+void netd_udp_appcall(void)
 {
-	/* debug
+	struct link *s = & map[uip_udp_conn->appstate];
+	ne.socket = s->socketn;
+
+#ifdef TRACE
 	   printe( "appcall udp: " );
 	   if( uip_aborted() ) printe("aborted");
 	   if( uip_acked() )  printe("acked");
@@ -347,17 +381,16 @@ void netd_udp_appcall()
 	   if( uip_timedout() ) printe("timed out");
 	   if( uip_connected() ) printe("connected" );
 	   printe("\n");
-	*/
-
-	struct link *s = & map[uip_udp_conn->appstate];
-	ne.socket = s->socketn;
+#endif
+	if (s->flags & LINK_DEAD)
+		return;
 
 	if ( uip_poll() ){
 		/* send data if there's data waiting on this connection */
 		/*    doing this before testing for close ??? */
 		if ( s->tend != s->tstart ){
 			send_udp( s );
-			return; /* short circuit LINK_CLOSED until EOD. */
+//			return; /* short circuit LINK_CLOSED until EOD. */
 		}
 		/* if flagged close from kernel, then really close, confirm w/ kernel */
 		if ( s->flags & LINK_CLOSED ){
@@ -366,6 +399,7 @@ void netd_udp_appcall()
 			ne.data = SS_CLOSED;
 			ksend( NE_NEWSTATE );
 			/* release private link resource */
+			s->flags |= LINK_DEAD;
 			rel_map( uip_udp_conn->appstate );
 			uip_udp_remove( uip_udp_conn );
 			return;
@@ -396,10 +430,13 @@ void netd_udp_appcall()
 }
 
 /* uIP callbck for UDP event */
-void netd_raw_appcall()
+void netd_raw_appcall(void)
 {
-	/* debug
-	   printe( "appcall udp: " );
+	struct link *s = & map[uip_raw_conn->appstate];
+	ne.socket = s->socketn;
+
+#ifdef TRACE
+	   printe( "appcall raw: " );
 	   if( uip_aborted() ) printe("aborted");
 	   if( uip_acked() )  printe("acked");
 	   if( uip_closed() ) printe("closed");
@@ -409,17 +446,16 @@ void netd_raw_appcall()
 	   if( uip_timedout() ) printe("timed out");
 	   if( uip_connected() ) printe("connected" );
 	   printe("\n");
-	*/
-
-	struct link *s = & map[uip_raw_conn->appstate];
-	ne.socket = s->socketn;
+#endif
+	if (s->flags & LINK_DEAD)
+		return;
 
 	if ( uip_poll() ){
 		/* send data if there's data waiting on this connection */
 		/*    doing this before testing for close ??? */
 		if ( s->tend != s->tstart ){
 			send_raw( s );
-			return; /* short circuit LINK_CLOSED until EOD. */
+//			return; /* short circuit LINK_CLOSED until EOD. */
 		}
 		/* if flagged close from kernel, then really close, confirm w/ kernel */
 		if ( s->flags & LINK_CLOSED ){
@@ -429,6 +465,7 @@ void netd_raw_appcall()
 			ksend( NE_NEWSTATE );
 			/* release private link resource */
 			rel_map( uip_raw_conn->appstate );
+			s->flags |= LINK_DEAD;
 			uip_raw_remove( uip_raw_conn );
 			return;
 		}
@@ -471,17 +508,22 @@ int dokernel( void )
 {
 	struct link *m;
 	int i = read( knet, &sm, sizeof(sm) );
+	int c;
+
 	if ( i < 0 ){
 		return 0;
 	}
-	else if ( i == sizeof( sm ) && sm.sd.event & 127 ){
-		/* debug
+	else if ( i == sizeof( sm ) && (sm.sd.event & 127)){
+#ifdef TRACE
 		   fprintf(stderr,"read size: %d ", i );
 		   fprintf(stderr,"knet lcn: %d ", sm.sd.lcn );
 		   fprintf(stderr,"event: %x ", sm.sd.event );
 		   fprintf(stderr,"newstat: %x\n", sm.sd.newstate );
-		*/
+#endif
 		m = & map[sm.sd.lcn];
+		c = m->conn - uip_conns;
+		printf("Connection %d\n", c);
+
 		if ( sm.sd.event & NEV_STATE ){
 			ne.socket = sm.s.s_num;
 			switch ( sm.sd.newstate ){
@@ -503,13 +545,21 @@ int dokernel( void )
 					int port = sm.s.s_addr[SADDR_DST].port;
 					uip_ipaddr_copy( &addr, (uip_ipaddr_t *)
 							 &sm.s.s_addr[SADDR_DST].addr );
-					/* need some HTONS'ing done here? */
 					conptr = uip_connect( &addr, port );
 					if ( !conptr ){
-						break; /* fixme: actually handler the error */
+						ne.data = SS_CLOSED;
+						ne.ret = ENOMEM;	/* should be ENOBUFS I think */
+						ksende(NE_NEWSTATE);
+						break;
 					}
 					m->conn = conptr; /* fixme: needed? */
 					conptr->appstate = sm.sd.lcn;
+					ne.data = SS_CONNECTING;
+					ksend( NE_NEWSTATE );
+					m->conn->userrequest = 1;
+					c = conptr - uip_conns;
+					if (sm.s.s_type == SOCKTYPE_TCP)
+						activity |= (1 << c);
 					break;
 				}
 				else if ( sm.s.s_type == SOCKTYPE_UDP ){
@@ -551,28 +601,10 @@ int dokernel( void )
 				}
 				break; /* FIXME: handle unknown/unhandled sock types here */
 			case SS_CLOSED:
-				if ( sm.s.s_type == SOCKTYPE_TCP ){
-					m->flags += LINK_SHUTW;
-					/* if remote already closed then send closing synch event
-					   directly back to kernel, and release our link */
-					if ( m->flags & LINK_SHUTR ){
-						ne.data = SS_CLOSED;
-						ksend( NE_NEWSTATE );
-						rel_map( sm.sd.lcn );
-					}
-					/* tell uIP thread that local has closed, but we
-					   cant send anything directly to uIP from here -
-					   so set a flag and let uip_poll() handler do the job
-					   the next time through the main program loop
-					*/
-					else {
-						m->flags += LINK_CLOSED;
-					}
-				}
-				else if ( sm.s.s_type == SOCKTYPE_UDP ||
-					sm.s.s_type == SOCKTYPE_RAW ){
-					m->flags += LINK_CLOSED;
-				}
+				if ( sm.s.s_type == SOCKTYPE_TCP )
+					activity |= (1 << c);
+				m->flags |= LINK_CLOSED;
+				m->conn->userrequest = 1;
 				break;
 			case SS_LISTENING:
 				/* htons here? */
@@ -595,7 +627,6 @@ int dokernel( void )
 			m->tsize[last] = sm.sd.tlen[last];
 		}
 		if ( sm.sd.event & NEV_READ ){
-			int last;
 			m->rstart = sm.sd.rbuf;
 			m->rend = sm.sd.rnext;
 		}
@@ -616,20 +647,34 @@ void send_or_loop( void )
 	   for devices (like SLIP) that interface on layer 3 (ip),
 	   we'll have to filter for IP address, rather 
 	*/
-	static char broad[6] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
-	/* on broadcast send to self and peers */
-	if (!memcmp(uip_buf, &broad[0], 6 )){
-		looplen = uip_len;
+	static uint8_t broad[6] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+
+	if (has_arp) {
+
+		/* on broadcast send to self and peers */
+		if (!memcmp(uip_buf, &broad[0], 6 )){
+			looplen = uip_len;
+			device_send(uip_buf, uip_len);
+			return;
+		}
+		/* if dest is our mac then just send to self, no peers */
+		if (!memcmp(uip_buf, &uip_lladdr.addr[0], 6)){
+			looplen = uip_len;
+			return;
+		}
+		/* if else then just send to peers */
 		device_send(uip_buf, uip_len);
-		return;
+	} else {
+		uint8_t *bp = uip_buf + 14;	/* TODO don't hard code */
+		if ((bp[0] & 0xF0) == 0x40) {	/* IP v4 */
+			/* 127.* or our address. We don't implement bcast
+			   or mcast p2p */
+			if (bp[16] == 127 || memcmp(bp + 16, &uip_hostaddr, 4) == 0)
+				looplen = uip_len;
+			else
+				device_send(uip_buf, uip_len);
+		}
 	}
-	/* if dest is our mac then just send to self, no peers */
-	if (!memcmp(uip_buf, &uip_lladdr.addr[0], 6)){
-		looplen = uip_len;
-		return;
-	}
-	/* if else then just send to peers */
-	device_send(uip_buf, uip_len);
 }
 
 int loop_or_read( void )
@@ -649,47 +694,68 @@ int douip( void )
 {
 	int ret = 0;
 	int i = loop_or_read();
-	if (i > 0){
+	if (i < 0)
+		ret = i;
+	if (i > 0) {
 		ret = 1;
 		uip_len = i;
 		if (uip_len > 0) {
 			if ( BUF->type == UIP_HTONS(UIP_ETHTYPE_IP)){
-				uip_arp_ipin();
+				if (has_arp)
+					uip_arp_ipin();
 				uip_input();
 				if (uip_len > 0) {
-					uip_arp_out();
+					if (has_arp)
+						uip_arp_out();
 					send_or_loop();
 				}
-			}else if ( BUF->type == UIP_HTONS(UIP_ETHTYPE_ARP)){
+			} else if (has_arp &&  BUF->type == UIP_HTONS(UIP_ETHTYPE_ARP)){
 				uip_arp_arpin();
 				if (uip_len > 0 )
 					send_or_loop();
 			}
 		}
-	} else if (timer_expired(&periodic_timer)) {
+	}
+	if (activity) {
+		for (i = 0; i < NSOCKET; i++) {
+			if (activity & (1 << i)) {
+				uip_poll_conn(&uip_conns[i]);
+				if (uip_len > 0) {
+					if (has_arp)
+						uip_arp_out();
+					send_or_loop();
+				}
+			}
+		}
+		activity = 0;
+	}
+	if (timer_expired(&periodic_timer)) {
 		timer_reset(&periodic_timer);
 		for (i = 0; i < UIP_CONNS; i++) {
 			uip_periodic(i);
 			if (uip_len > 0) {
-				uip_arp_out();
+				if (has_arp)
+					uip_arp_out();
 				send_or_loop();
 			}
 		}
 		for (i = 0; i < UIP_UDP_CONNS; i++) {
 			uip_udp_periodic(i);
 			if (uip_len > 0) {
-				uip_arp_out();
+				if (has_arp)
+					uip_arp_out();
 				send_or_loop();
 			}
 		}
 		for (i = 0; i < UIP_RAW_CONNS; i++) {
 			uip_raw_periodic(i);
 			if (uip_len > 0) {
-				uip_arp_out();
+				if (has_arp)
+					uip_arp_out();
 				send_or_loop();
 			}
 		}
-		if ( timer_expired(&arp_timer)){
+		if (has_arp &&  timer_expired(&arp_timer)){
 			timer_reset(&arp_timer);
 			uip_arp_timer();
 		}
@@ -702,13 +768,13 @@ int douip( void )
 
 /* Get charactor from rc file */
 /*   returns charactor from file, -1 on EOF */
-int mygetc( )
+int mygetc(void)
 {
-	static char *ibuf[80];
+	static char ibuf[80];
 	static char *pos;
 	static int len = 0;
 	if ( ! len ){
-		pos = (char *)ibuf;
+		pos = ibuf;
 		len = read( rc, ibuf, 80 );
 		if( len < -1 )
 			exit_err( "Error Reading rc file.\n" );
@@ -784,7 +850,6 @@ int getaddr( uip_ipaddr_t *ipaddr )
 /* read, parse, and apply rc file */
 int parse_rcfile( void ){
 
-	int x;
 	char buf[80];
 	uip_ipaddr_t ipaddr;        /* ip address buffer */
 	uip_eth_addr ethaddr;       /* mac address buffer */
@@ -857,13 +922,13 @@ int main( int argc, char *argv[] )
 	/* initialize our map */
 	init_map();
 
-
 	/*
 	 * Set up uIP
 	 */
 
-	timer_set(&periodic_timer, CLOCK_SECOND / 4);
-	timer_set(&arp_timer, CLOCK_SECOND * 10 );
+	timer_set(&periodic_timer, 1);
+	if (has_arp)
+		timer_set(&arp_timer, 10 );
 
 	uip_init();
 
@@ -889,18 +954,22 @@ int main( int argc, char *argv[] )
 	ethaddr.addr[5] = 0x05;
 	uip_setethaddr(ethaddr);
 
-
 	parse_rcfile();
 
 	if( device_init() ){
 		exit_err( "cannot init net device\n");
 	}
 
-
 	while(1) {
 		int a,b;
 		a = dokernel();
 		b = douip();
+		/* FIXME: we should probably run blocking on the /dev/net
+		   interface and use alarm() based upon the next needed
+		   uIP timer expiry because on some of our platforms bogus
+		   net wakeups are not cheap */
+		/* a driver can return -1 to indicate that device_read will
+		   do the relevnt delays/polling */
 		if( ! (a || b) )
 			_pause(3);
 	}

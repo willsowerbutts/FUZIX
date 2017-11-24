@@ -38,7 +38,8 @@ int pagemap_alloc(ptptr p)
   return 0;
 }
 
-int pagemap_realloc(usize_t size)
+/* FIXME: update once we have the new mm logic in place */
+int pagemap_realloc(usize_t code, usize_t size, usize_t stack)
 {
   if (size >= ramtop)
     return ENOMEM;
@@ -77,9 +78,12 @@ int swapout(ptptr p)
 	/* Write the app (and possibly the uarea etc..) to disk */
 #ifdef CONFIG_SPLIT_UDATA
 	swapwrite(SWAPDEV, blk, UDATA_SIZE, (uaddr_t)&udata, 1);
-#endif
 	swapwrite(SWAPDEV, blk + UDATA_BLKS, SWAPTOP - SWAPBASE,
 		  SWAPBASE, 1);
+#else
+	swapwrite(SWAPDEV, blk, SWAPTOP - SWAPBASE,
+		  SWAPBASE, 1);
+#endif
 	p->p_page = 0;
 	p->p_page2 = map;
 #ifdef DEBUG
@@ -105,9 +109,12 @@ void swapin(ptptr p, uint16_t map)
 
 #ifdef CONFIG_SPLIT_UDATA
 	swapread(SWAPDEV, blk, UDATA_SIZE, (uaddr_t)&udata, 1);
-#endif
 	swapread(SWAPDEV, blk + UDATA_BLKS, SWAPTOP - SWAPBASE,
 		 SWAPBASE, 1);
+#else
+	swapread(SWAPDEV, blk, SWAPTOP - SWAPBASE,
+		 SWAPBASE, 1);
+#endif
 #ifdef DEBUG
 	kprintf("%x: swapin done %d\n", p, p->p_page);
 #endif

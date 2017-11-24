@@ -2,7 +2,6 @@
         ; WRS: Note we list all our segments here, even though
         ; we don't use them all, because their ordering is set
         ; when they are first seen.
-	.area _CODE6		; overlaid by 3 4 5 (which are smaller)
         .area _CODE
         .area _CODE2
         .area _CONST
@@ -34,11 +33,14 @@
         .globl s__DATA
         .globl l__DATA
         .globl kstack_top
+	.globl init
 
         ; startup code
         .area _CODE
 init:
         di
+	ld a,#'*'
+	out (1),a
         ld sp, #kstack_top
 
         ; Configure memory map

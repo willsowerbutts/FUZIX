@@ -40,7 +40,7 @@ the data.  This is very important.
 
 uint16_t bufclock;		/* Time-stamp counter for LRU */
 
-uint8_t *bread(uint16_t dev, blkno_t blk, bool rewrite)
+bufptr bread(uint16_t dev, blkno_t blk, bool rewrite)
 {
 	register bufptr bp;
 
@@ -59,28 +59,29 @@ uint8_t *bread(uint16_t dev, blkno_t blk, bool rewrite)
 		/* If rewrite is set, we are about to write over the entire block,
 		   so we don't need the previous contents */
 		if (!rewrite) {
-			if (bdread(bp) == -1) {
+			if (bdread(bp) != BLKSIZE) {
 				udata.u_error = EIO;
 				bp->bf_busy = BF_FREE;
+				bp->bf_dev = NO_DEVICE;
 				return (NULL);
 			}
 		}
 	}
 
 	bp->bf_time = ++bufclock;	/* Time stamp it */
-	return (bp->bf_data);
+	return bp;
 }
 
 
-void brelse(void *bp)
+void brelse(bufptr bp)
 {
-	bfree((bufptr) bp, 0);
+	bfree(bp, 0);
 }
 
 
-void bawrite(void *bp)
+void bawrite(bufptr bp)
 {
-	bfree((bufptr) bp, 1);
+	bfree(bp, 1);
 }
 
 
@@ -93,10 +94,12 @@ int bfree(bufptr bp, uint8_t dirty)
 		bp->bf_busy = BF_FREE;
 
 	if (dirty > 1) {	/* immediate writeback */
-		if (bdwrite(bp) == -1)
+		if (bdwrite(bp) != BLKSIZE) {
 			udata.u_error = EIO;
+			return -1;
+		}
 		bp->bf_dirty = false;
-		return -1;
+		return 0;
 	}
 	return 0;
 }
@@ -104,7 +107,10 @@ int bfree(bufptr bp, uint8_t dirty)
 
 /* This returns a busy block not belonging to any device, with
  * garbage contents.  It is essentially a malloc for the kernel.
- * Free it with brelse()!
+ * Free it with tmpfree.
+ *
+ * API note: Nothing guarantees a connection between a bufcache entry
+ * and tmpbuf in future. Always free with tmpfree.
  */
 void *tmpbuf(void)
 {
@@ -114,10 +120,11 @@ void *tmpbuf(void)
 	bp->bf_dev = NO_DEVICE;
 	bp->bf_busy = BF_BUSY;
 	bp->bf_time = ++bufclock;	/* Time stamp it */
-	return bp->bf_data;
+	return bp->__bf_data;
 }
 
-
+/* Allocate an empty _disk cache_ buffer. This won't be able to use tmpbuf
+   on platforms where we split disk and temporary buffers */
 void *zerobuf(void)
 {
 	void *b;
@@ -231,17 +238,13 @@ udata.u_base should be consulted instead.
 Any device other than a disk will have only raw access.
 **********************************************************************/
 
-/* FIXME: To do banking without true 'far' pointers we need to figure
-   out some scheme to do a bank call here - do we need a dev_tab bank
-   entry perhaps ? */
-
 static void bdsetup(bufptr bp)
 {
 	udata.u_buf = bp;
 	udata.u_block = bp->bf_blk;
 	udata.u_blkoff = 0;
 	udata.u_nblock = 1;
-	udata.u_dptr = bp->bf_data;
+	udata.u_dptr = bp->__bf_data;
 }
 
 int bdread(bufptr bp)

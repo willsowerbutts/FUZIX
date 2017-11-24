@@ -67,6 +67,8 @@ void tty_putc(uint8_t minor, unsigned char c)
 	irqflags_t irq;
 
 	if (minor < 3) {
+		/* FIXME: this makes our vt handling messy as we have the
+		   IRQ off for the character I/O */
 		irq = di();
 		if (curtty != minor - 1) {
 			vt_save(&ttysave[curtty]);
@@ -125,6 +127,10 @@ void tty_setup(uint8_t minor)
 	uint8_t cf = t->termios.c_cflag;
 	uint8_t r;
 
+	/* Console */
+	if (minor < 2)
+		return;
+
 	if ((cf & CBAUD) < B150) {
 		cf &= ~CBAUD;
 		cf |= B150;
@@ -145,7 +151,7 @@ void tty_setup(uint8_t minor)
 	dart_setup[7] = r;
 	dart_setup[7] = r;
 
-	if (minor == 1) {
+	if (minor == 3) {
 		ctc1 = 0x45;
 		ctc1 = dartbaud[cf & CBAUD];
 	} else {
@@ -189,7 +195,7 @@ static uint8_t keybyte, keybit;
 static uint8_t newkey;
 static int keysdown = 0;
 static uint16_t shiftmask[8] = {
-	0, 0, 1, 0, 1, 0, 63, 0
+	0, 0, 1, 0, 1, 0, 65 , 0
 };
 __sfr __at 0x05 keyport;
 __sfr __at 0x06 keyporth;

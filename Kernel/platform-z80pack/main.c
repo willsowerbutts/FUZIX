@@ -30,7 +30,7 @@ void platform_interrupt(void)
  tty_pollirq();
  timer_interrupt();
 // netat_poll();
- netz_poll();
+// netz_poll();
 }
 
 /* Nothing to do for the map of init */
@@ -55,7 +55,7 @@ char *pathbuf(void)
 
 void pathfree(char *tb)
 {
- brelse(tb);
+ tmpfree(tb);
 }
 
 #endif

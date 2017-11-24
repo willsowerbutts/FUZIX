@@ -11,7 +11,6 @@
  *	- Parity
  *	- Various misc minor flags
  *	- Software Flow control
- *	- Don't echo EOF char ?
  *
  *	Add a small echo buffer to each tty
  */
@@ -63,11 +62,14 @@ int tty_read(uint8_t minor, uint8_t rawflag, uint8_t flag)
 			}
 			if (!(t->termios.c_lflag & ICANON)) {
 			        uint8_t n = t->termios.c_cc[VTIME];
-			        if (n)
+
+				if ((nread || !n) && nread >= t->termios.c_cc[VMIN])
+					goto out;
+				if (n)
 			                udata.u_ptab->p_timeout = n + 1;
                         }
 			if (psleep_flags_io(q, flag, &nread))
-			        return nread;
+			        goto out;
                         /* timer expired */
                         if (udata.u_ptab->p_timeout == 1)
                                 goto out;
@@ -76,16 +78,13 @@ int tty_read(uint8_t minor, uint8_t rawflag, uint8_t flag)
 		++nread;
 
 		/* return according to mode */
-		if (!(t->termios.c_lflag & ICANON)) {
-			if (nread >= t->termios.c_cc[VMIN])
-				break;
-		} else {
+		if (t->termios.c_lflag & ICANON) {
 			if (nread == 1 && (c == t->termios.c_cc[VEOF])) {
 				/* ^D */
 				nread = 0;
 				break;
 			}
-			if (c == '\n')
+			if (c == '\n' || c == t->termios.c_cc[VEOL])
 				break;
 		}
 
@@ -107,7 +106,6 @@ int tty_write(uint8_t minor, uint8_t rawflag, uint8_t flag)
 	uint8_t c;
 
 	used(rawflag);
-	used(flag);
 
 	t = &ttydata[minor];
 
@@ -134,11 +132,13 @@ int tty_write(uint8_t minor, uint8_t rawflag, uint8_t flag)
 
 			if (t->termios.c_oflag & OPOST) {
 				if (c == '\n' && (t->termios.c_oflag & ONLCR))
-					tty_putc_wait(minor, '\r');
+					if (tty_putc_maywait(minor, '\r', flag))
+						break;
 				else if (c == '\r' && (t->termios.c_oflag & OCRNL))
 					c = '\n';
 			}
-			tty_putc_wait(minor, c);
+			if (tty_putc_maywait(minor, c, flag))
+				break;
 		}
 		++udata.u_base;
 		++written;
@@ -150,6 +150,7 @@ int tty_write(uint8_t minor, uint8_t rawflag, uint8_t flag)
 int tty_open(uint8_t minor, uint16_t flag)
 {
 	struct tty *t;
+	irqflags_t irq;
 
 	if (minor > NUM_DEV_TTY) {
 		udata.u_error = ENODEV;
@@ -172,11 +173,14 @@ int tty_open(uint8_t minor, uint16_t flag)
 	if ((t->termios.c_cflag & CLOCAL) || (flag & O_NDELAY))
 		goto out;
 
-        /* FIXME: racy - need to handle IRQ driven carrier events safely */
+	irq = di();
         if (!tty_carrier(minor)) {
-                if (psleep_flags(&t->termios.c_cflag, flag))
+		if (psleep_flags(&t->termios.c_cflag, flag)) {
+			irqrestore(irq);
                         return -1;
+		}
         }
+        irqrestore(irq);
         /* Carrier spiked ? */
         if (t->flag & TTYF_DEAD) {
                 udata.u_error = ENXIO;
@@ -243,10 +247,6 @@ int tty_ioctl(uint8_t minor, uarg_t request, char *data)
 {				/* Data in User Space */
         struct tty *t;
 
-	if (minor > NUM_DEV_TTY) {
-		udata.u_error = ENODEV;
-		return -1;
-	}
         t = &ttydata[minor];
 
         /* Special case select ending after a hangup */
@@ -354,14 +354,15 @@ int tty_ioctl(uint8_t minor, uarg_t request, char *data)
  * UZI180 - This routine is called from the raw Hardware read routine,
  * either interrupt or polled, to process the input character.  HFB
  */
-int tty_inproc(uint8_t minor, unsigned char c)
+uint8_t tty_inproc(uint8_t minor, unsigned char c)
 {
 	unsigned char oc;
-	int canon;
+	uint8_t canon;
 	uint8_t wr;
 	struct tty *t = &ttydata[minor];
 	struct s_queue *q = &ttyinq[minor];
 
+	/* This is safe as ICANON is in the low bits */
 	canon = t->termios.c_lflag & ICANON;
 
 	if (t->termios.c_iflag & ISTRIP)
@@ -384,6 +385,7 @@ int tty_inproc(uint8_t minor, unsigned char c)
 		if(t->termios.c_iflag & ICRNL)
 			c = '\n';
 	}
+	/* Q: should this be else .. */
 	if (c == '\n' && (t->termios.c_iflag & INLCR))
 		c = '\r';
 
@@ -400,10 +402,6 @@ sigout:
 			return 1;
 		}
 	}
-	if (c == t->termios.c_cc[VDISCARD]) {	/* ^O */
-	        t->flag ^= TTYF_DISCARD;
-		return 1;
-	}
 	if (t->termios.c_iflag & IXON) {
 		if (c == t->termios.c_cc[VSTOP]) {	/* ^S */
 		        t->flag |= TTYF_STOP;
@@ -417,6 +415,10 @@ sigout:
 		}
 	}
 	if (canon) {
+		if (c == t->termios.c_cc[VDISCARD]) {	/* ^O */
+		        t->flag ^= TTYF_DISCARD;
+			return 1;
+		}
 		if (c == t->termios.c_cc[VERASE]) {
 		        wr = ECHOE;
 		        goto eraseout;
@@ -433,7 +435,7 @@ sigout:
 	}
 
 	wr = insq(q, c);
-	if (wr)
+	if (wr && (!canon || c != t->termios.c_cc[VEOF]))
 		tty_echo(minor, c);
 	else
 		tty_putc(minor, '\007');	/* Beep if no more room */
@@ -480,9 +482,12 @@ void tty_erase(uint8_t minor)
 }
 
 
-void tty_putc_wait(uint8_t minor, unsigned char c)
+uint8_t tty_putc_maywait(uint8_t minor, unsigned char c, uint8_t flag)
 {
         uint8_t t;
+
+        flag &= O_NDELAY;
+
 #ifdef CONFIG_DEV_PTY
 	if (minor >= PTY_OFFSET)
 		ptty_putc_wait(minor, c);
@@ -495,17 +500,38 @@ void tty_putc_wait(uint8_t minor, unsigned char c)
            The driver should return a value from the ttyready_t enum:
             1 (TTY_READY_NOW) -- send bytes now
             0 (TTY_READY_SOON) -- spinning may be useful
-           -1 (TTY_READY_LATER) -- blocked, don't spin (eg flow controlled) */
+           -1 (TTY_READY_LATER) -- blocked, don't spin (eg flow controlled)
+
+           FIXME: we can make tty_sleeping an add on to a hardcoded function using tty
+	   flags, and tty_outproc test it. Then only devices wanting to mask
+	   an actual IRQ need to care
+
+	*/
 	if (!udata.u_ininterrupt) {
-		while ((t = tty_writeready(minor)) != TTY_READY_NOW)
+		while ((t = tty_writeready(minor)) != TTY_READY_NOW) {
+			if (chksigs()) {
+				udata.u_error = EINTR;
+				return 1;
+			}
+			if (t == TTY_READY_LATER && flag) {
+				udata.u_error = EAGAIN;
+				return 1;
+			}
 			if (t != TTY_READY_SOON || need_reschedule()){
 				irqflags_t irq = di();
 				tty_sleeping(minor);
 				psleep(&ttydata[minor]);
 				irqrestore(irq);
 			}
+		}
 	}
 	tty_putc(minor, c);
+	return 0;
+}
+
+void tty_putc_wait(uint8_t minor, unsigned char ch)
+{
+	tty_putc_maywait(minor, ch, 0);
 }
 
 void tty_hangup(uint8_t minor)

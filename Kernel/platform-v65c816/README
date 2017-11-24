@@ -1,0 +1,52 @@
+Use a modern cc65 from https://github.com/cc65/cc65
+
+
+Our memory mapping looks like this
+
+Bank 0:
+	0x0000		Kernel DP
+	0x0100		UData + C stack etc
+	0x0300		Bootcode
+	...		Kernel image
+	0xF000		7 x 256 byte CPU stacks for processes paired
+			with their direct pages
+	0xFE00		I/O page
+	0xFF00		Vectors			[packed at 0 in image]
+
+And in user space
+
+	0x0000		Unused
+	0x00FE		syscall vector
+	0x0100		Program (CPU stack is in bank 0)
+	0xFC00		Udata copy (512 bytes)
+	0xFE00		Spare
+	0xFF00		Stubs [signal return etc]
+			(keep in 0 page ?)
+
+We don't yet allow for a split I/D program using two banks and having 64K
+code and 64K data.
+
+To build:
+Set the platform/target
+make clean
+make
+
+and you'll get an image file to dd onto the last 64K of your disk image for
+the emulator.
+
+TODO
+----
+- Debug fork and task switching
+- Fix brk() checking [right now its busted entirely]
+- Make discard sane so we can discard for buffers
+- Test signal handling paths
+- Fix signal when not loaded at PROGBASE
+- Fix execl() execle() in userspace (so init can be fully tested)
+- Add pre-emption logic to the interrupt return path
+- Add swap logic
+- Relocatable binaries
+- cc65 stubs optimized for 65c816
+
+Optimisations We Need To Do
+--------------------------------------------------------------
+- Only copy the needed memory when forking, not 64K ?

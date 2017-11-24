@@ -20,6 +20,7 @@
 	    .globl _mapslot_bank1
 	    .globl _mapslot_bank2
 	    .globl _need_resched
+            .globl _bufpool
 
 	    ; video driver
 	    .globl _vtinit
@@ -56,6 +57,10 @@
             .include "kernel.def"
             .include "../kernel.def"
 
+	    .area _BUFFERS
+
+_bufpool:
+	    .ds BUFSIZE * NBUFS
 ; -----------------------------------------------------------------------------
 ; COMMON MEMORY BANK (0xF000 upwards)
 ; -----------------------------------------------------------------------------
@@ -187,22 +192,25 @@ map_kernel:
 
 map_process_2:
 	    push de
+            push bc
 	    push af
 	    ld de, #map_table	; Write only so cache in RAM
-	    ld a, (hl)
-	    ld (de), a
-	    out (0xFC), a	; Low 16K
-	    inc hl
-	    inc de
-	    ld a, (hl)	
-	    out (0xFD), a	; Next 16K
-	    ld (de), a
-	    inc hl
-	    inc de
-	    ld a, (hl)		; Next 16K. Leave the common for the task
-	    out (0xFE), a	; switcher
-	    ld (de), a
+            ld (de), a
+            ld bc, #4
+            ldir
+            dec hl
+            dec hl
+            dec hl
+            dec hl
+            ld c, #0xFC
+            ld b, #4
+            outi
+            inc c
+            outi
+            inc c
+            outi
 	    pop af
+            pop bc
 	    pop de
             ret
 ;
@@ -218,7 +226,8 @@ map_restore:
 ;
 ;	Save the current mapping.
 ;
-map_save:   push hl
+map_save:
+            push hl
 	    ld hl, (map_table)
 	    ld (map_savearea), hl
 	    ld hl, (map_table + 2)

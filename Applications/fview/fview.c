@@ -96,7 +96,7 @@ uint32_t swizzle32( uint32_t d ){
 /* Return true if big endian */
 int big_endian(){
 	uint16_t w = 0x1234;
-	uint8_t *c = (uint8_t *) w;
+	uint8_t *c = (uint8_t *)&w;
 	if( *c == 0x12 ) return 1;
 	return 0;
 }
@@ -230,7 +230,7 @@ void bpp32( int no ){
 			fs_dist( e, erri );
 			erri++;
 		}
-		*out++ = c; /* every 8 samples write c to dest
+		*out++ = c; /* every 8 samples write c to dest */
 	}
 }
 

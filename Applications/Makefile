@@ -1,0 +1,72 @@
+#
+APPS = util cmd sh games cave cpm v7games games\
+       as09 ld09 netd SmallC MWC asz80 flashrom
+
+.PHONY: $(APPS)
+
+all:	$(APPS)
+
+util:
+	+(cd util; $(MAKE) -f Makefile.$(USERCPU))
+
+cmd:
+	+(cd V7/cmd; $(MAKE) -f Makefile.$(USERCPU))
+
+sh:
+	+(cd V7/cmd/sh; $(MAKE) -f Makefile.$(USERCPU))
+
+v7games:
+	+(cd V7/games; $(MAKE) -f Makefile.$(USERCPU))
+
+cave:
+	+(cd cave; $(MAKE) -f Makefile.$(USERCPU))
+
+cpm:
+	+(cd cpm; $(MAKE) -f Makefile.$(USERCPU))
+
+games:
+	+(cd games; $(MAKE) -f Makefile.$(USERCPU))
+
+ld09:
+	+(cd ld09; $(MAKE) -f Makefile.$(USERCPU))
+
+as09:
+	+(cd as09; $(MAKE) -f Makefile.$(USERCPU))
+
+netd:
+	+(cd netd; $(MAKE) -f Makefile.$(USERCPU))
+
+SmallC:
+	+(cd SmallC; $(MAKE) -f Makefile.$(USERCPU))
+
+MWC:
+	+(cd MWC/cmd; $(MAKE) -f Makefile.$(USERCPU))
+
+asz80:
+	+(cd MWC/cmd/asz80; $(MAKE) -f Makefile.$(USERCPU))
+
+flashrom:
+	+(cd flashrom; $(MAKE) -f Makefile.$(USERCPU))
+
+levee:
+	+(cd levee; $(MAKE) -f Makefile.$(USERCPU))
+
+ue:
+	+(cd ue; $(MAKE) -f Makefile.$(USERCPU))
+
+clean:
+	(cd util; $(MAKE) -f Makefile.$(USERCPU) clean)
+	(cd V7/cmd; $(MAKE) -f Makefile.$(USERCPU) clean)
+	(cd V7/cmd/sh; $(MAKE) -f Makefile.$(USERCPU) clean)
+	(cd V7/games; $(MAKE) -f Makefile.$(USERCPU) clean)
+	(cd cave; $(MAKE) -f Makefile.$(USERCPU) clean)
+	(cd cpm; $(MAKE) -f Makefile.$(USERCPU) clean)
+	(cd games; $(MAKE) -f Makefile.$(USERCPU) clean)
+	(cd ld09; $(MAKE) -f Makefile.$(USERCPU) clean)
+	(cd netd; $(MAKE) -f Makefile.$(USERCPU) clean)
+	(cd SmallC; $(MAKE) -f Makefile.$(USERCPU) clean)
+	(cd MWC/cmd; $(MAKE) -f Makefile.$(USERCPU) clean)
+	(cd MWC/cmd/asz80; $(MAKE) -f Makefile.$(USERCPU) clean)
+	(cd flashrom; $(MAKE) -f Makefile.$(USERCPU) clean)
+	(cd levee; $(MAKE) -f Makefile.$(USERCPU) clean)
+	(cd ue; $(MAKE) -f Makefile.$(USERCPU) clean)

@@ -4,7 +4,8 @@ typedef unsigned short uint16_t;
 typedef signed short int16_t;
 typedef unsigned char uint8_t;
 typedef signed char int8_t;
-typedef signed int size_t;
+typedef unsigned int size_t;
+typedef signed int ssize_t;
 
 typedef uint8_t irqflags_t;
 
@@ -20,7 +21,7 @@ typedef uint16_t uptr_t;		/* User pointer equivalent */
 #define uputi  uputw			/* Copy user int type */
 #define ugeti  ugetw			/* between user and kernel */
 
-extern void *  memcpy(void *, void *, size_t);
+extern void *  memcpy(void *, const void *, size_t);
 extern void *  memset(void *, int, size_t);
 extern size_t  strlen(const char *);
 
@@ -55,8 +56,41 @@ typedef union {            /* this structure is endian dependent */
 /* Sane behaviour for unused parameters */
 #define used(x)
 
-/* No inline or const */
+typedef uint8_t page_t;		/* May need to change this for 286PM */
 
-#define inline
+struct proc_map {
+	uint16_t cseg;		/* CS to use. Keep computed for asm code */
+	uint16_t dseg;		/* DS to use. Ditto */
+#ifdef CONFIG_IBMPC_EMM
+	uint16_t emm;		/* 0 - none, 1+ = bank code, and the emm
+				   frame is defined by dseg so that the core
+				   code is mostly oblivious to it */
+#endif
+	page_t cbase;		/* The rest is only used in C code */
+	uint8_t csize;
+	page_t dbase;
+	uint8_t dsize;
+	uint8_t ssize;
+};
 
-#define const
+extern uint16_t get_code_segment(uint16_t pv);
+extern uint16_t get_data_segment(uint16_t pv);
+
+extern void cpu_detect(void);
+
+static inline void outb(uint8_t value, uint16_t port)
+{
+	register uint16_t portv asm("dx") = port;
+	register uint8_t valv asm("al") = value;
+	asm volatile("outb %0, %1" : : "Na"(valv), "Nd"(portv));
+}
+
+static inline uint8_t inb(uint16_t port)
+{
+	register uint8_t value asm("al");
+	register uint16_t portv asm("dx") = port;
+	asm volatile("inb %1, %0" : "=a"(value) : "Nd"(portv));
+	return value;
+}
+
+#define CPUTYPE	CPUTYPE_8086

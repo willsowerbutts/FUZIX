@@ -72,6 +72,7 @@ SRCS  = \
 	fdisk.c \
 	fforth.c \
 	fgrep.c \
+	free.c \
 	fsck.c \
 	grep.c \
 	id.c \
@@ -87,6 +88,7 @@ SRCS  = \
 	od.c \
 	passwd.c \
 	ps.c \
+	remount.c \
 	sed.c \
 	sleep.c \
 	ssh.c \

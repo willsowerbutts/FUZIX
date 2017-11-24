@@ -11,9 +11,9 @@ void pagemap_init(void)
 {
 #ifdef SWAPDEV
   /* Swap */
-  swapmap_add(0);
-  swapmap_add(1);
-  swapmap_add(2);
+  swapmap_init(0);
+  swapmap_init(1);
+  swapmap_init(2);
 #endif
 }
 
@@ -43,6 +43,15 @@ void platform_interrupt(void)
 /* Nothing to do for the map of init */
 void map_init(void)
 {
+}
+
+size_t strlcpy(char *dst, const char *src, size_t dstsize)
+{
+  size_t len = strlen(src);
+  size_t cp = len >= dstsize ? dstsize - 1 : len;
+  memcpy(dst, src, cp);
+  dst[cp] = 0;
+  return len;
 }
 
 #ifndef SWAPDEV

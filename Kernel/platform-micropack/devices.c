@@ -28,7 +28,7 @@ bool validdev(uint16_t dev)
 {
     /* This is a bit uglier than needed but the right hand side is
        a constant this way */
-    if(dev > ((sizeof(dev_tab)/sizeof(struct devsw)) << 8) + 255)
+    if(dev > ((sizeof(dev_tab)/sizeof(struct devsw)) << 8) - 1)
 	return false;
     else
         return true;
@@ -40,5 +40,5 @@ void device_init(void)
   /* The first swap area is reserved for the banked syscall blocks */
   /* Add a max of 63 swaps (4MB) to use the entire J drive */
   for (i = 1; i <= MAX_SWAPS; i++)
-    swapmap_add(i);
+    swapmap_init(i);
 }

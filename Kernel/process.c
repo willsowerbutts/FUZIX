@@ -16,13 +16,13 @@
  * event equal to the process's own ptab address is a wait().
  */
 
+
 void psleep(void *event)
 {
 	irqflags_t irq = di();
 #ifdef DEBUG
 	kprintf("psleep(0x%p)", event);
 #endif
-
 	switch (udata.u_ptab->p_status) {
 	case P_SLEEP:		// echo output from devtty happens while processes are still sleeping but in-context
 	case P_STOPPED:		// coming to a halt
@@ -82,13 +82,13 @@ void wakeup(void *event)
 void pwake(ptptr p)
 {
 	if (p->p_status > P_RUNNING && p->p_status < P_STOPPED) {
-		p->p_status = P_READY;
+		if (p->p_status != P_READY) {
+			nready++;
+			p->p_status = P_READY;
+		}
 		p->p_wait = NULL;
-		nready++;
 	}
 }
-
-
 
 /* Getproc returns the process table pointer of a runnable process.
  * It is actually the scheduler.  If there are none, it loops.
@@ -213,8 +213,6 @@ void newproc(ptptr p)
 	p->p_pptr = udata.u_ptab;
 	p->p_ignored = udata.u_ptab->p_ignored;
 	p->p_tty = udata.u_ptab->p_tty;
-	if (!p->p_tty)		/* If no tty, try tty of parent's parent */
-		p->p_tty = udata.u_ptab->p_pptr->p_tty;
 	p->p_uid = udata.u_ptab->p_uid;
 	/* Set default priority */
 	p->p_priority = MAXTICKS;
@@ -270,10 +268,13 @@ ptptr ptab_alloc(void)
 			if (nextpid++ > MAXPID)
 				nextpid = 20;
 			newp->p_pid = nextpid;
+
 			for (p = ptab; p < ptab_end; p++)
 				if (p->p_status != P_EMPTY
-				    && p->p_pid == nextpid)
+				    && p->p_pid == nextpid) {
 					newp->p_pid = 0;	/* try again */
+					break;
+				}
 		}
 		newp->p_top = udata.u_top;
 		if (pagemap_alloc(newp) == 0) {
@@ -373,6 +374,7 @@ void timer_interrupt(void)
 	/* Check run time of current process. We don't charge time while
 	   swapping as the last thing we want to do is to swap a process in
 	   and decide it took time to swap in so needs to go away again! */
+	/* FIXME: can we kill off inint ? */
 	if (!inswap && (++runticks >= udata.u_ptab->p_priority)
 	    && !udata.u_insys && inint && nready > 1) {
                  need_resched = 1;
@@ -416,7 +418,6 @@ void unix_syscall(void)
 #endif
 	}
 	udata.u_ptab->p_timeout = 0;
-	chksigs();
 
 	di();
 	if (runticks >= udata.u_ptab->p_priority && nready > 1) {
@@ -426,6 +427,7 @@ void unix_syscall(void)
 		switchout();
 	}
 	ei();
+	chksigs();
 }
 
 void sgrpsig(uint16_t pgrp, uint8_t sig)
@@ -490,6 +492,7 @@ rescan:
 		        if (m & stopper) {
 				/* Don't allow us to race SIGCONT */
 				irqflags_t irq = di();
+				/* FIXME: can we ever end up here not in READY/RUNNING ? */
 				nready--;
 				udata.u_ptab->p_status = P_STOPPED;
 				udata.u_ptab->p_event = j;
@@ -513,6 +516,14 @@ rescan:
 #ifdef DEBUG
 			kprintf("process terminated by signal %d\n", j);
 #endif
+			/* We may have marked ourselves as asleep and
+			   then been caught by the chksigs when we tried
+			   to task switch into bed. In that case we need
+			   to put the process back in running state */
+			if (udata.u_ptab->p_status == P_SLEEP) {
+				udata.u_ptab->p_status = P_RUNNING;
+				nready++;
+			}
 			doexit(dump_core(j));
 		} else if (*svec != SIG_IGN) {
 			/* Arrange to call the user routine at return */
@@ -605,6 +616,7 @@ void acctexit(ptptr p)
 #endif
 
 /* Perform the terminal process signalling */
+/* FIXME: why return a value - we don't use it */
 static int signal_parent(ptptr p)
 {
         if (p->p_ignored & (1UL << SIGCHLD)) {
@@ -627,7 +639,7 @@ void doexit(uint16_t val)
 	irqflags_t irq;
 
 #ifdef DEBUG
-	kprintf("process %d exiting\n", udata.u_ptab->p_pid);
+	kprintf("process %d exiting %d\n", udata.u_ptab->p_pid, val);
 
 	kprintf
 	    ("udata.u_page %u, udata.u_ptab %p, udata.u_ptab->p_page %u\n",
@@ -673,10 +685,18 @@ void doexit(uint16_t val)
 	for (p = ptab; p < ptab_end; ++p) {
 		if (p->p_status == P_EMPTY || p == udata.u_ptab)
 			continue;
-		/* Set any child's parents to our parent */
-		/* FIXME: do we need to wakeup the parent if we do this ? */
-		if (p->p_pptr == udata.u_ptab)
-			p->p_pptr = udata.u_ptab->p_pptr;
+		/* Set any child's parents to init */
+		if (p->p_pptr == udata.u_ptab) {
+			p->p_pptr = ptab;	/* ptab is always init */
+			/* Suppose our child is a zombie and init has
+			   SIGCLD blocked */
+		        if (ptab[0].p_ignored & (1UL << SIGCHLD)) {
+				p->p_status = P_EMPTY;
+			} else {
+				ssig(&ptab[0], SIGCHLD);
+				wakeup(&ptab[0]);
+			}
+		}
 		/* Send SIGHUP to any pgrp members and remove
 		   them from our pgrp */
                 if (p->p_pgrp == udata.u_ptab->p_pid) {

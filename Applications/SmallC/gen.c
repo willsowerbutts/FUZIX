@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <string.h>
 #include "defs.h"
 #include "data.h"
 
@@ -38,11 +39,10 @@ void print_label(int label) {
 
 /**
  * glabel - generate label
- * not used ?
  * @param lab label number
  */
 void glabel(char *lab) {
-    output_string (lab);
+    output_label_name(lab);
     output_label_terminator ();
     newline ();
 }
@@ -79,7 +79,7 @@ int output_byte(char c) {
  * @param ptr the string
  * @return 
  */
-void output_string(char ptr[]) {
+void output_string(char *ptr) {
     int k;
     k = 0;
     while (output_byte (ptr[k++]));
@@ -98,7 +98,7 @@ void print_tab(void) {
  * @param ptr
  * @return 
  */
-void output_line(char ptr[])
+void output_line(char *ptr)
 {
     output_with_tab (ptr);
     newline ();
@@ -109,7 +109,7 @@ void output_line(char ptr[])
  * @param ptr
  * @return 
  */
-void output_with_tab(char ptr[]) {
+void output_with_tab(char *ptr) {
     print_tab ();
     output_string (ptr);
 }

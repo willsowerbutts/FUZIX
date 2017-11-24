@@ -192,7 +192,7 @@ void mkfs(uint16_t fsize, uint16_t isize)
     printf("Done.\n");
 }
 
-void printopts( )
+void printopts(void)
 {
 	fprintf( stderr, "usage: mkfs [options] device isize fsize\n");
 	exit(-1);
@@ -242,7 +242,7 @@ int main(int argc, char *argv[])
     if (!yes())
 	exit(-1);
 
-    dev = open(argv[optind], O_RDWR);
+    dev = open(argv[optind], O_RDWR|O_SYNC);
     if (dev < 0) {
         fprintf(stderr, "mkfs: can't open device %s\n", argv[optind]);
         exit(-1);

@@ -24,18 +24,23 @@ void map_init(void)
 
 void pagemap_init(void)
 {
+	/* 0 means swapped */
+	/* We number 1-4 and reply on the hardware wrapping to 0,3,2,1...
+	   in the more general case if you use 0 then you need to invent
+	   it */
 	pagemap_add(3);
 	pagemap_add(2);
 	pagemap_add(1);
-	pagemap_add(0);	/* Used for init */
+	pagemap_add(4);
 }
 
 uaddr_t ramtop;
 uint8_t need_resched;
 
+/* Each process is mapped into the same banked address */
 uaddr_t pagemap_base(void)
 {
-	return 0x20000UL;
+	return MAPBASE;
 }
 
 uint8_t platform_param(char *p)

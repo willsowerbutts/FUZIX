@@ -235,6 +235,7 @@ arg_t _brk(void)
 	   the extra as we no longer guarantee it is clear already */
 	if (addr > udata.u_break)
 		uzero((void *)udata.u_break, addr - udata.u_break);
+	/* FIXME: review  can brk() below base address */
 	udata.u_break = addr;
 	return 0;
 }
@@ -475,8 +476,10 @@ arg_t _signal(void)
 	retval = (arg_t) udata.u_sigvec[sig];
 	if (sig != SIGKILL && sig != SIGSTOP)
 		udata.u_sigvec[sig] = func;
+	/* Force recalculation of signal pending in the syscall return path */
+	udata.u_cursig = 0;
 	irqrestore(irq);
-
+	
 	return (retval);
 
 nogood:
@@ -505,6 +508,8 @@ arg_t _sigdisp(void)
 		udata.u_ptab->p_held |= sigmask(sig);
 	else
 		udata.u_ptab->p_held &= ~sigmask(sig);
+	/* Force recalculation of signal pending in the syscall return path */
+	udata.u_cursig = 0;
 	return 0;
 }
 
@@ -601,8 +606,7 @@ getpgrp (void)                    Function 61
 
 arg_t _getpgrp(void)
 {
-	udata.u_ptab->p_pgrp = udata.u_ptab->p_pid;
-	return (0);
+	return udata.u_ptab->p_pgrp;
 }
 
 /*******************************************

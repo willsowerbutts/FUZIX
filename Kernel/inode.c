@@ -31,7 +31,7 @@ void readi(inoptr ino, uint8_t flag)
 	usize_t amount;
 	usize_t toread;
 	blkno_t pblk;
-	unsigned char *bp;
+	bufptr bp;
 	uint16_t dev;
 	bool ispipe;
 
@@ -95,8 +95,9 @@ void readi(inoptr ino, uint8_t flag)
 					bp = zerobuf();
 				else
 					bp = bread(dev, pblk, 0);
-
-				uputsys(bp + BLKOFF(udata.u_offset), amount);
+				if (bp == NULL)
+					break;
+				uputblk(bp, BLKOFF(udata.u_offset), amount);
 
 				brelse(bp);
 			}
@@ -114,6 +115,10 @@ void readi(inoptr ino, uint8_t flag)
 				wakeup(ino);
 			}
 		}
+		/* Compute return value */
+		udata.u_count -= toread;
+		if (udata.u_count == 0 && udata.u_error)
+			udata.u_count = (usize_t) -1;
 		break;
 
 	case MODE_R(F_CDEV):
@@ -134,7 +139,7 @@ void writei(inoptr ino, uint8_t flag)
 {
 	usize_t amount;
 	usize_t towrite;
-	unsigned char *bp;
+	bufptr bp;
 	bool ispipe;
 	blkno_t pblk;
 	uint16_t dev;
@@ -173,9 +178,9 @@ void writei(inoptr ino, uint8_t flag)
 			        return;
 		}
 		/* Sleep if empty pipe */
-		goto loop;
 
 	      loop:
+	      	flag = flag & O_SYNC ? 2 : 1;
 
 		while (towrite) {
 			amount = min(towrite, BLKSIZE - BLKOFF(udata.u_offset));
@@ -195,11 +200,14 @@ void writei(inoptr ino, uint8_t flag)
 			 * about its previous contents
 			 */
 			bp = bread(dev, pblk, (amount == BLKSIZE));
+			if (bp == NULL)
+				break;
 
-			ugetsys(bp + BLKOFF(udata.u_offset), amount);
+			ugetblk(bp, BLKOFF(udata.u_offset), amount);
 
-			/* FIXME: O_SYNC */
-			bawrite(bp);
+			/* O_SYNC */
+			if (bfree(bp, flag))
+				break;
 
 			udata.u_base += amount;
 			udata.u_offset += amount;
@@ -220,6 +228,10 @@ void writei(inoptr ino, uint8_t flag)
 				ino->c_flags |= CDIRTY;
 			}
 		}
+		/* Compute return value */
+		udata.u_count -= towrite;
+		if (udata.u_count == 0 && udata.u_error)
+			udata.u_count = (usize_t) -1;
 		break;
 
 	case MODE_R(F_CDEV):
@@ -342,6 +354,8 @@ int dev_openi(inoptr *ino, uint16_t flag)
 void sync(void)
 {
 	inoptr ino;
+	struct mount *m;
+	bufptr buf;
 
 	/* Write out modified inodes */
 
@@ -349,10 +363,20 @@ void sync(void)
 		if (ino->c_refs > 0 && (ino->c_flags & CDIRTY)) {
 			wr_inode(ino);
 			ino->c_flags &= ~CDIRTY;
-			/* WRS: also call d_flush(ino->c_dev) here? */
 		}
-
-        /* This now also indirectly does the superblocks as they
-           are buffers that are pinned */
+	for (m = fs_tab; m < fs_tab + NMOUNTS; m++) {
+		if (m->m_dev != NO_DEVICE &&
+			m->m_fs.s_fmod != FMOD_CLEAN) {
+			/* GO_CLEAN means write a CLEAN to the media */
+			if (m->m_fs.s_fmod == FMOD_GO_CLEAN)
+				m->m_fs.s_fmod = FMOD_CLEAN;
+			buf = bread(m->m_dev, 1, 1);
+			if (buf) {
+				blkfromk(&m->m_fs, buf, 0, sizeof(struct filesys));
+				bfree(buf, 2);
+			}
+		}
+	}
+	/* WRS: also call d_flush(dev) here for each dirty dev ? */
 	bufsync();		/* Clear buffer pool */
 }
