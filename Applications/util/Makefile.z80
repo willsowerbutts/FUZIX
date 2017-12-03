@@ -26,6 +26,7 @@ SRCSNS = \
 	head.c \
 	init.c \
 	kill.c \
+	killall.c \
 	line.c \
 	ln.c \
 	logname.c \
@@ -86,6 +87,7 @@ SRCS  = banner.c \
 	passwd.c \
 	ps.c \
 	remount.c \
+	seq.c \
 	setdate.c \
 	sleep.c \
 	ssh.c \
