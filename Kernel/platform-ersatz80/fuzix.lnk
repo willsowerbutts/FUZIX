@@ -1,0 +1,42 @@
+-mwxuy
+-i fuzix.ihx
+-b _CODE=0x0088
+-b _COMMONMEM=0xF000
+-b _DISCARD=0xE000
+-l z80
+platform-ersatz80/crt0.rel
+platform-ersatz80/commonmem.rel
+platform-ersatz80/ersatz80.rel
+start.rel
+version.rel
+lowlevel-z80.rel
+platform-ersatz80/tricks.rel
+platform-ersatz80/main.rel
+timer.rel
+kdata.rel
+platform-ersatz80/devices.rel
+platform-ersatz80/devdisk.rel
+devio.rel
+filesys.rel
+process.rel
+inode.rel
+syscall_exec16.rel
+syscall_fs.rel
+syscall_proc.rel
+syscall_fs2.rel
+syscall_fs3.rel
+syscall_other.rel
+mm.rel
+swap.rel
+bank16k.rel
+tty.rel
+devsys.rel
+usermem.rel
+usermem_std-z80.rel
+platform-ersatz80/discard.rel
+platform-ersatz80/devdisk-discard.rel
+platform-ersatz80/devtty.rel
+platform-ersatz80/mbr.rel
+platform-ersatz80/blkdev.rel
+platform-ersatz80/monitor.rel
+-e

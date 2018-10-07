@@ -1,0 +1,25 @@
+; UZI mnemonics for memory addresses etc
+
+U_DATA			.equ	0xF000	; (this is struct u_data from kernel.h)
+U_DATA__TOTALSIZE	.equ	0x300	; 256+256+256 bytes.
+Z80_TYPE		.equ	0	; we only support CMOS Z80s
+USE_FANCY_MONITOR	.equ	1	; disabling this saves around approx 0.5KB
+
+PROGBASE		.equ	0x0000
+PROGLOAD		.equ	0x0100
+
+; ersatz80 mnemonics for I/O ports etc
+CPU_CLOCK_KHZ		.equ	20000
+
+; 16550 UART
+UART0_BASE	.equ	0x00
+UART0_STATUS	.equ	UART0_BASE + 0
+UART0_DATA	.equ	UART0_BASE + 1
+
+; MMU Ports
+MPGSEL_0	.equ	0x78	; Bank_0 page select register (R/W)
+MPGSEL_1	.equ	0x79	; Bank_1 page select register (R/W)
+MPGSEL_2	.equ	0x7A	; Bank_2 page select register (R/W)
+MPGSEL_3	.equ	0x7B	; Bank_3 page select register (R/W)
+
+Z80_MMU_HOOKS		    .equ 0
