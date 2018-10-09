@@ -14,7 +14,6 @@
         .globl _dofork
         .globl _runticks
         .globl unix_syscall_entry
-        .globl interrupt_handler
 	.globl map_kernel
 	.globl _ramtop
 	.globl _need_resched

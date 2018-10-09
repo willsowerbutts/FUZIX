@@ -2,6 +2,8 @@
 #include <kdata.h>
 #include <printf.h>
 #include <devtty.h>
+#include <tty.h>
+#include <ersatz80.h>
 #include "config.h"
 
 extern unsigned char irqvector;
@@ -30,14 +32,22 @@ void platform_idle(void)
 
 void platform_interrupt(void)
 {
-	switch(irqvector) {
-		case 1:
-			timer_interrupt(); 
-			return;
-		// case 2:
-		// 	tty_pollirq_uart0();
-		// 	return;
-		default:
-			return;
-	}
+    uint8_t irqs;
+
+    irqs = INT_STATUS;
+    if(irqs & (1 << INT_BIT_TIMER))
+        timer_interrupt();
+    if(irqs & (1 << INT_BIT_UART0))
+        tty_inproc(1, UART0_DATA);
+    INT_STATUS = 0x00; // mark IRQ as handled
+//	switch(irqvector) {
+//		case 1:
+//			timer_interrupt(); 
+//			return;
+//		// case 2:
+//		// 	tty_pollirq_uart0();
+//		// 	return;
+//		default:
+//			return;
+//	}
 }

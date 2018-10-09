@@ -4,7 +4,8 @@
 #include <devtty.h>
 #include <ds1302.h>
 #include "config.h"
-#include "devrd.h"
+#include <ersatz80.h>
+#include <devdisk.h>
 
 /* Everything in here is discarded after init starts */
 
@@ -19,6 +20,8 @@ void init_hardware_c(void)
     procmem = 1024 - 64;
     /* zero out the initial bufpool */
     memset(bufpool, 0, (char*)bufpool_end - (char*)bufpool);
+    /* unmask TIMER and UART1 interrupts */
+    INT_MASK = ( (1 << INT_BIT_TIMER) | (1 << INT_BIT_UART0) );
 }
 
 void pagemap_init(void)

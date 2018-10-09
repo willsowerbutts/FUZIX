@@ -152,7 +152,7 @@ _program_vectors:
 	; now install the interrupt vector at 0x0038
 	ld a,#0xC3			; JP instruction
 	ld (0x0038),a
-	ld hl,#null_handler             ; TODO replace with real interrupt handler
+	ld hl,#interrupt_handler
 	ld (0x0039),hl
 
 	; set restart vector for UZI system calls
