@@ -10,6 +10,7 @@
 void devdisk_init_drive(uint8_t drive)
 {
     blkdev_t *blk;
+    uint8_t *p;
 
     // check if the drive is present and the disk is mounted
     // absent drives always have the error flag set
@@ -28,10 +29,13 @@ void devdisk_init_drive(uint8_t drive)
     blk->transfer = devdisk_transfer_sector;
     blk->flush = devdisk_sync;
     // read out the device size
-    DISK_COMMAND = DISK_CMD_SEEK_END;
-    blk->drive_lba_count = (((uint32_t)DISK_SEC_0) | 
-                            ((uint32_t)DISK_SEC_1 << 8) |
-                            ((uint32_t)DISK_SEC_2 << 16)) + 1;
+    DISK_COMMAND = DISK_CMD_REPORT_SIZE;
+    // ugly, but generates compact code
+    p = ((uint8_t *)&blk->drive_lba_count);
+    *(p++) = DISK_SEC_0;
+    *(p++) = DISK_SEC_1;
+    *(p++) = DISK_SEC_2;
+    *(p++) = 0;
     kprintf("ersatz80 disk %d (%dMB) ", drive, (int)(blk->drive_lba_count >> 11));
     blkdev_scan(blk, SWAPSCAN);
 }

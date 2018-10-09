@@ -32,7 +32,8 @@ __sfr __at (DISK_BASE + 8) DISK_COMMAND;
 #define DISK_CMD_MOUNT            (0x22)
 #define DISK_CMD_UNMOUNT          (0x23)
 #define DISK_CMD_SEEK_END         (0x24)
-#define DISK_CMD_SYNC             (0x25)
+#define DISK_CMD_REPORT_SIZE      (0x25)
+#define DISK_CMD_SYNC             (0x26)
 #define DISK_CMD_CLEAR_ERROR      (0x80)
 
 #endif
