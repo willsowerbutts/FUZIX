@@ -163,9 +163,6 @@ int blkdev_ioctl(uint8_t minor, uarg_t request, char *data)
 	return 0;
 }
 
-/* FIXME: this would tidier and handle odd partition types sanely if split
-   into blkdev_alloc() - just returns a device, and blkdev_scan() */
-
 blkdev_t *blkdev_alloc(void)
 {
     blkdev_t *blk = &blkdev_table[0];
