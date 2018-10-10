@@ -16,6 +16,7 @@ void devdisk_init_drive(uint8_t drive)
     // absent drives always have the error flag set
     // unmounted drives also always have the error flag set
     DISK_COMMAND = DISK_CMD_SELECT_DRIVE(drive);
+    DISK_COMMAND = DISK_CMD_MOUNT;
     DISK_COMMAND = DISK_CMD_CLEAR_ERROR;
     if(DISK_STATUS & DISK_STATUS_ERROR)
         return;

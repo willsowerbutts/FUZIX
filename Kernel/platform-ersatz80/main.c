@@ -35,9 +35,10 @@ void platform_interrupt(void)
     uint8_t irqs;
 
     irqs = INT_STATUS;
-    if(irqs & (1 << INT_BIT_TIMER))
+    if(irqs & (1 << INT_BIT_TIMER)){
         timer_interrupt();
-    if(irqs & (1 << INT_BIT_UART0))
+        TIMER_CONTROL = 0x00; // clear the timer interrupt
+    }if(irqs & (1 << INT_BIT_UART0))
         tty_inproc(1, UART0_DATA);
     INT_STATUS = 0x00; // mark IRQ as handled
 //	switch(irqvector) {

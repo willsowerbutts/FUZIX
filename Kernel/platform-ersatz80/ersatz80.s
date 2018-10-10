@@ -1,5 +1,6 @@
 ; 2018-10-07 William R Sowerbutts
 ; ersatz80 hardware specific code
+; based on Sergey Kiselev's zeta-v2 code
 
         .module ersatz80
 

@@ -20,6 +20,8 @@ void init_hardware_c(void)
     procmem = 1024 - 64;
     /* zero out the initial bufpool */
     memset(bufpool, 0, (char*)bufpool_end - (char*)bufpool);
+    /* set timer frequency */
+    TIMER_CONTROL = TICKSPERSEC;
     /* unmask TIMER and UART1 interrupts */
     INT_MASK = ( (1 << INT_BIT_TIMER) | (1 << INT_BIT_UART0) );
 }
